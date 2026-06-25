@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS materials (
     lev TEXT,
     note TEXT,
     price_history JSONB DEFAULT '[]',
+    co2_per_unit NUMERIC,
+    co2_source TEXT,
+    lca_indicators JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -99,7 +102,14 @@ CREATE TABLE IF NOT EXISTS project_byggdelar (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. Row Level Security (RLS) policies
+-- 8. App State (Key-Value Store)
+CREATE TABLE IF NOT EXISTS public.app_state (
+    id TEXT PRIMARY KEY,
+    data JSONB NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 9. Row Level Security (RLS) policies
 -- Slå på RLS för varje tabell
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -108,6 +118,7 @@ ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE arbetsmoments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_byggdelar ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
 
 -- Här är det viktigt att skriva policys så att man bara ser sitt eget företags data:
 CREATE POLICY "Se sitt eget företags data" ON companies
@@ -115,5 +126,10 @@ CREATE POLICY "Se sitt eget företags data" ON companies
 
 CREATE POLICY "Se projekt baserat på company" ON projects
     FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+-- App State policy (Full tillgång för alla inloggade just nu, då ids i koden använder dataSpaceId)
+DROP POLICY IF EXISTS "Enable all for all users" ON public.app_state;
+CREATE POLICY "Enable all for all users" ON public.app_state FOR ALL USING (true) WITH CHECK (true);
+
 
 -- Osv. Beroende på exakt hur strikt vi vill ha det.

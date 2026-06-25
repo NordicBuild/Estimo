@@ -49,52 +49,115 @@ export function WorkspaceActions({
   );
 }
 
-interface WorkspaceNavProps {
+interface KalkylSubNavProps {
   activeTab: string;
   setActiveTab: (val: any) => void;
-  sidebarOpen: boolean;
-  setSidebarOpen: (val: boolean) => void;
 }
 
 export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: WorkspaceNavProps) {
-  const tabs = [
+  const kalkylTabs = ['kalkyl', 'material', 'arbete', 'analys', 'sammanstalln', 'slutsida', 'planering', 'anbud'];
+  const isKalkylActive = kalkylTabs.includes(activeTab);
+  
+  const resursTabs = ['arbetare', 'fastigheter', 'maskiner', 'bilar', 'ovrigt'];
+  const isResursActive = resursTabs.includes(activeTab);
+
+  const projektunderlagTabs = ['dokument_ffu', 'dokument_modell', 'dokument_kommunikation', 'pdf', 'bim'];
+  const isProjektunderlagActive = projektunderlagTabs.includes(activeTab);
+
+  const mainTabs = [
     { id: 'hemsida', label: 'Hem', icon: 'home' },
     { id: 'projekt', label: 'Projektinfo', icon: 'info' },
-    { id: 'kalkyl', label: 'Kalkyl', icon: 'calculate' },
-    { id: 'pdf', label: 'PDF-mätningar', icon: 'picture_as_pdf' },
-    { id: 'bim', label: 'BIM 3D Mätning', icon: 'view_in_ar' },
-    { id: 'analys', label: 'Analys & KPI', icon: 'monitoring' },
-    { id: 'sammanstalln', label: 'Sammanställning', icon: 'table_chart' },
-    { id: 'planering', label: 'Planering', icon: 'calendar_month' },
-    { id: 'slutsida', label: 'Slutsida', icon: 'receipt_long' },
-    { id: 'anbud', label: 'Kundanbud', icon: 'contract' },
-    { id: 'ifc', label: 'IFC V1', icon: 'view_in_ar' },
-    { id: 'material', label: 'Materialdatabas', icon: 'inventory_2' },
-    { id: 'arbete', label: 'Arbetsmoment', icon: 'engineering' },
+    { id: 'dokument_ffu', label: 'Projektunderlag', icon: 'topic' },
+    { id: 'kalkyl', label: 'Anbud', icon: 'calculate' },
+    { id: 'arbetare', label: 'Resurser', icon: 'inventory_2' },
   ] as const;
 
   return (
-    <nav className={`fixed inset-y-0 left-0 pt-16 lg:pt-0 lg:relative bg-surface-container-low border-r border-outline-variant w-64 lg:w-48 flex flex-col py-2 z-50 overflow-y-auto shrink-0 print:hidden h-full transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+    <nav className={`fixed inset-y-0 left-0 pt-16 lg:pt-0 lg:relative bg-surface-container-low border-r border-outline-variant w-64 lg:w-56 flex flex-col py-2 z-50 overflow-y-auto shrink-0 print:hidden h-full transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
       <div className="flex items-center justify-between px-4 lg:hidden mb-4 mt-2">
         <span className="font-bold text-primary uppercase tracking-widest text-xs">Meny</span>
         <button onClick={() => setSidebarOpen(false)} className="text-on-surface-variant hover:text-on-surface p-1">
           <span className="material-symbols-outlined text-[20px]">close</span>
         </button>
       </div>
-      {tabs.map(tab => (
-        <button 
-          key={tab.id}
-          className={`h-11 px-4 text-[11px] font-bold tracking-widest uppercase flex items-center gap-3 text-left transition-colors border-l-4 ${
-            activeTab === tab.id 
-              ? 'text-primary border-primary bg-primary/5' 
-              : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest'
-          }`}
-          onClick={() => { setActiveTab(tab.id as any); setSidebarOpen(false); }}
-        >
-          <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: activeTab === tab.id ? "'FILL' 1" : "'FILL' 0" }}>{tab.icon}</span> 
-          <span className="truncate">{tab.label}</span>
-        </button>
-      ))}
+      <div className="flex flex-col gap-1 px-2">
+        {mainTabs.map(tab => {
+          let isActive = activeTab === tab.id;
+          let subTabs: {id: string, label: string, icon: string}[] | null = null;
+
+          if (tab.id === 'kalkyl') {
+            isActive = isKalkylActive;
+            subTabs = [
+              { id: 'kalkyl', label: 'Kalkyl', icon: 'calculate' },
+              { id: 'analys', label: 'Analys & KPI', icon: 'monitoring' },
+              { id: 'sammanstalln', label: 'Sammanställning', icon: 'table_chart' },
+              { id: 'slutsida', label: 'Slutsida', icon: 'receipt_long' },
+              { id: 'planering', label: 'Planering', icon: 'calendar_month' },
+              { id: 'anbud', label: 'Kundanbud', icon: 'contract' },
+              { id: 'material', label: 'Material', icon: 'inventory_2' },
+              { id: 'arbete', label: 'Arbetsmoment', icon: 'engineering' },
+            ];
+          } else if (tab.id === 'arbetare') {
+            isActive = isResursActive;
+            subTabs = [
+              { id: 'arbetare', label: 'Arbetare', icon: 'engineering' },
+              { id: 'fastigheter', label: 'Fastigheter', icon: 'home_work' },
+              { id: 'maskiner', label: 'Maskiner', icon: 'precision_manufacturing' },
+              { id: 'bilar', label: 'Bilar', icon: 'directions_car' },
+              { id: 'ovrigt', label: 'Övrigt', icon: 'category' },
+            ];
+          } else if (tab.id === 'dokument_ffu') {
+            isActive = isProjektunderlagActive;
+            subTabs = [
+              { id: 'dokument_ffu', label: 'FFU', icon: 'description' },
+              { id: 'dokument_modell', label: 'Modell', icon: 'architecture' },
+              { id: 'dokument_kommunikation', label: 'Kommunikation', icon: 'forum' },
+              { id: 'pdf', label: 'PDF-Mätningar', icon: 'picture_as_pdf' },
+              { id: 'bim', label: 'BIM 3D Mätning', icon: 'view_in_ar' },
+            ];
+          }
+          
+          return (
+            <div key={tab.id} className="flex flex-col">
+              <button 
+                className={`h-10 px-3 text-xs font-bold tracking-widest uppercase flex items-center gap-3 text-left transition-colors rounded-lg shrink-0 ${
+                  isActive 
+                    ? 'text-primary bg-primary/10' 
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest'
+                }`}
+                onClick={() => { setActiveTab(tab.id as any); if (!subTabs) setSidebarOpen(false); }}
+              >
+                <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>{tab.icon}</span> 
+                <span className="truncate">{tab.label}</span>
+                {subTabs && (
+                  <span className="material-symbols-outlined ml-auto text-[16px]">
+                    {isActive ? 'expand_more' : 'chevron_right'}
+                  </span>
+                )}
+              </button>
+              
+              {isActive && subTabs && (
+                <div className="flex flex-col mt-1 mb-2 ml-4 border-l-2 border-outline-variant/50 pl-2 gap-1">
+                  {subTabs.map(subTab => (
+                    <button
+                      key={subTab.id}
+                      className={`h-9 px-3 text-xs font-semibold flex items-center gap-3 text-left transition-colors rounded-md ${
+                        activeTab === subTab.id
+                          ? 'text-primary bg-primary/10'
+                          : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest'
+                      }`}
+                      onClick={() => { setActiveTab(subTab.id as any); setSidebarOpen(false); }}
+                    >
+                      <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: activeTab === subTab.id ? "'FILL' 1" : "'FILL' 0" }}>{subTab.icon}</span>
+                      <span className="truncate">{subTab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </nav>
   );
 }

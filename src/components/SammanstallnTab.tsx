@@ -8,10 +8,11 @@ interface Props {
   materials: Material[];
   updateMaterial: (index: number, updates: Partial<Material>) => void;
   projectInfo: ProjectInfo;
+  setProjectInfo?: React.Dispatch<React.SetStateAction<ProjectInfo>>;
   companyInfo: CompanyInfo;
 }
 
-export function SammanstallnTab({ calcResult, materials, updateMaterial, projectInfo, companyInfo }: Props) {
+export function SammanstallnTab({ calcResult, materials, updateMaterial, projectInfo, setProjectInfo, companyInfo }: Props) {
   const formatKr = (v: number) => Math.round(v).toLocaleString('sv-SE') + ' kr';
   const formatN = (v: number) => v.toLocaleString('sv-SE', { maximumFractionDigits: 1 });
   const [editingPrice, setEditingPrice] = useState<{name: string, price: number} | null>(null);
@@ -165,6 +166,134 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+        <div className="card flex flex-col">
+          <div className="card-header border-b border-[var(--border)]">
+            <div className="card-icon green"><i className="fa-solid fa-leaf"></i></div>
+            <span className="card-title text-sm font-bold uppercase tracking-wider text-[var(--text2)]">Klimatpåverkan (A1-A5)</span>
+          </div>
+          <div className="p-6 flex-1 flex flex-col justify-center">
+            {calcResult.co2.total > 0 ? (
+              <>
+                <div className="flex justify-between items-end mb-4">
+                  <div>
+                    <div className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--text3)] mb-1">Total CO2e</div>
+                    <div className="text-2xl font-mono font-bold text-green-700">{formatN(calcResult.co2.total)} kg</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--text3)] mb-1">per m² BTA</div>
+                    <div className="flex items-center gap-2 justify-end">
+                      {projectInfo.bta && projectInfo.bta > 0 ? (
+                        <div className="text-xl font-mono font-bold text-green-600">{formatN(calcResult.co2.total / projectInfo.bta)} kg</div>
+                      ) : (
+                        <div className="text-sm italic text-gray-500">Ange BTA</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-4" data-html2canvas-ignore>
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="text-xs font-semibold text-[var(--text2)]">BTA (m²):</label>
+                    <input 
+                      type="number" 
+                      className="border border-[var(--border)] rounded px-2 py-1 text-sm w-24 focus:border-[var(--blue)] outline-none" 
+                      value={projectInfo.bta || ''}
+                      onChange={(e) => {
+                        if (setProjectInfo) {
+                          setProjectInfo(prev => ({ ...prev, bta: parseFloat(e.target.value) || undefined }));
+                        }
+                      }}
+                      placeholder="t.ex. 150"
+                    />
+                  </div>
+                </div>
+
+                {calcResult.co2Missing.length > 0 && (
+                  <div className="bg-orange-50 border-l-4 border-orange-400 p-3 rounded mb-4 text-sm">
+                    <div className="flex items-start gap-2">
+                      <i className="fa-solid fa-triangle-exclamation text-orange-500 mt-0.5"></i>
+                      <div>
+                        <span className="font-semibold text-orange-800">{calcResult.co2Missing.length} material saknar klimatdata</span>
+                        <p className="text-orange-700 text-xs mt-1">
+                          Totalen kan vara underskattad. Saknas för: {calcResult.co2Missing.slice(0, 3).join(', ')}
+                          {calcResult.co2Missing.length > 3 ? ` och ${calcResult.co2Missing.length - 3} till.` : '.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center text-[var(--text3)] italic py-8 border border-dashed border-[var(--border)] rounded-lg">
+                Ingen klimatdata beräknad. Fyll i CO2-faktorer på materialen.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card flex flex-col">
+          <div className="card-header border-b border-[var(--border)]">
+            <div className="card-icon green"><i className="fa-solid fa-chart-bar"></i></div>
+            <span className="card-title text-sm font-bold uppercase tracking-wider text-[var(--text2)]">Största utsläppskällor</span>
+          </div>
+          <div className="p-6 flex-1 overflow-auto">
+            {calcResult.co2.total > 0 ? (
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--text3)] mb-3">Topp 5 Material</h4>
+                  <div className="space-y-3">
+                    {Object.entries(calcResult.co2.byMaterial)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 5)
+                      .map(([name, val], idx) => {
+                        const pct = (val / calcResult.co2.total) * 100;
+                        return (
+                          <div key={idx}>
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="font-semibold text-[var(--text)] truncate mr-2">{name}</span>
+                              <span className="font-mono text-[var(--text2)]">{formatN(val)} kg ({Math.round(pct)}%)</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-[0.65rem] font-bold uppercase tracking-wider text-[var(--text3)] mb-3">Per Kategori</h4>
+                  <div className="space-y-3">
+                    {Object.entries(calcResult.co2.byCategory)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([name, val], idx) => {
+                        const pct = (val / calcResult.co2.total) * 100;
+                        return (
+                          <div key={idx}>
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="font-semibold text-[var(--text)] truncate mr-2">{name}</span>
+                              <span className="font-mono text-[var(--text2)]">{formatN(val)} kg ({Math.round(pct)}%)</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-1.5">
+                              <div className="bg-emerald-400 h-1.5 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-[var(--text3)] italic py-8 border border-dashed border-[var(--border)] rounded-lg">
+                Ingen data.
+              </div>
+            )}
           </div>
         </div>
       </div>

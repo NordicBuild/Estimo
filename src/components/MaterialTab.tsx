@@ -1,7 +1,9 @@
-import React, { useState, Fragment, useRef } from 'react';
+import React, { useState, Fragment, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Material, DEFAULT_MATERIAL } from '../data';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { EXAMPLE_CO2_FACTORS } from '../climate/co2';
+import { OpenLcaClient, Ref, CalcSetup } from '../climate/openLcaClient';
 
 interface Props {
   materials: Material[];
@@ -49,6 +51,18 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
   const categories = Array.from(new Set([...materials.map(m => m.cat), ...customCategories]));
   const filteredCategories = categories.filter(c => c.toLowerCase().includes(catSearch.toLowerCase()));
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // OpenLCA State
+  const [showOpenLcaPanel, setShowOpenLcaPanel] = useState(false);
+  const [olcaUrl, setOlcaUrl] = useState('http://localhost:8080');
+  const [olcaMethods, setOlcaMethods] = useState<Ref[]>([]);
+  const [olcaMethod, setOlcaMethod] = useState<Ref | null>(null);
+  const [olcaSearch, setOlcaSearch] = useState('');
+  const [olcaResults, setOlcaResults] = useState<Ref[]>([]);
+  const [olcaSelectedTarget, setOlcaSelectedTarget] = useState<Ref | null>(null);
+  const [olcaTargetMaterialIndex, setOlcaTargetMaterialIndex] = useState<number | null>(null);
+  const [olcaLoading, setOlcaLoading] = useState(false);
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   const downloadTemplate = () => {
     const ws = XLSX.utils.json_to_sheet([
@@ -273,6 +287,162 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
     );
   };
 
+  const CO2Editable = ({ index, mat }: { index: number, mat: Material }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [val, setVal] = useState(mat.co2PerUnit?.toString() ?? '0');
+
+    const handleBlur = () => {
+      const parsed = Number(val.replace(',', '.'));
+      let newCO2Value = mat.co2PerUnit ?? 0;
+      if (!isNaN(parsed) && parsed >= 0) {
+        newCO2Value = parsed;
+      }
+      
+      if (newCO2Value !== mat.co2PerUnit) {
+        updateMaterial(index, { co2PerUnit: newCO2Value });
+      } else {
+        setVal(newCO2Value.toString());
+      }
+      setIsEditing(false);
+    };
+
+    if (isEditing) {
+      return (
+        <input 
+          autoFocus
+          type="number" 
+          step="any"
+          min="0"
+          className="w-16 text-right font-mono text-[var(--text2)] bg-white border border-gray-300 rounded px-1 py-0.5 text-[0.65rem] focus:border-green-500 outline-none transition-colors"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={e => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+        />
+      );
+    }
+
+    return (
+      <span 
+        onClick={() => { setIsEditing(true); setVal(mat.co2PerUnit?.toString() ?? '0'); }}
+        className="cursor-pointer text-gray-600 border border-transparent hover:border-gray-300 px-1 py-0.5 rounded transition-colors inline-block min-w-[2.5rem] font-mono text-right text-[0.65rem]"
+        title="Klicka för att redigera CO2-faktor"
+      >
+        {mat.co2PerUnit ?? 0}
+      </span>
+    );
+  };
+
+  const handleFillExampleCO2 = () => {
+    const indicesToUpdate: number[] = [];
+    materials.forEach((m, i) => {
+      // Find a match based on name. It's case insensitive matching.
+      for (const [key, value] of Object.entries(EXAMPLE_CO2_FACTORS)) {
+        if (m.name.toLowerCase().includes(key.toLowerCase()) && m.co2PerUnit === undefined) {
+           indicesToUpdate.push(i);
+        }
+      }
+    });
+    
+    // Instead of using updateMultipleMaterials one by one which might be slow,
+    // let's do it in a loop if updateMultipleMaterials handles partial updates per index
+    // Wait, updateMultipleMaterials takes `indices: number[], updates: Partial<Material>`.
+    // It sets the same updates to all indices.
+    // So we have to do it individually if they have different values, or use updateMaterial.
+    // Let's just use updateMaterial in a loop for now, it's fast enough in React.
+    let count = 0;
+    materials.forEach((m, i) => {
+      let matchedKey = null;
+      for (const key of Object.keys(EXAMPLE_CO2_FACTORS)) {
+        if (m.name.toLowerCase().includes(key.toLowerCase()) && !m.co2PerUnit) {
+           matchedKey = key;
+           break;
+        }
+      }
+      if (matchedKey) {
+         updateMaterial(i, { co2PerUnit: EXAMPLE_CO2_FACTORS[matchedKey] });
+         count++;
+      }
+    });
+
+    if (showNotification) {
+      if (count > 0) {
+        showNotification(`Fyllde i exempelvärden för ${count} material. Kom ihåg att ersätta dem!`, 'success');
+      } else {
+        showNotification('Hittade inga material som matchade och saknade CO2-värde.', 'info');
+      }
+    }
+  };
+
+  const loadOlcaMethods = async () => {
+    setOlcaLoading(true);
+    try {
+      const client = new OpenLcaClient(olcaUrl);
+      const methods = await client.getDescriptors('ImpactMethod');
+      setOlcaMethods(methods);
+      if (methods.length > 0) setOlcaMethod(methods[0]);
+    } catch (e: any) {
+      if (showNotification) showNotification('Kunde inte ladda metoder: ' + e.message, 'error');
+    } finally {
+      setOlcaLoading(false);
+    }
+  };
+
+  const searchOlcaTargets = async () => {
+    if (!olcaSearch) return;
+    setOlcaLoading(true);
+    try {
+      const client = new OpenLcaClient(olcaUrl);
+      const ps = await client.getDescriptors('ProductSystem');
+      const processes = await client.getDescriptors('Process');
+      const epds = await client.getDescriptors('Epd');
+      const all = [...ps, ...processes, ...epds];
+      const res = all.filter(d => (d.name || '').toLowerCase().includes(olcaSearch.toLowerCase()));
+      setOlcaResults(res);
+    } catch (e: any) {
+      if (showNotification) showNotification('Sökning misslyckades: ' + e.message, 'error');
+    } finally {
+      setOlcaLoading(false);
+    }
+  };
+
+  const applyOlcaImpact = async () => {
+    if (olcaTargetMaterialIndex === null || !olcaMethod || !olcaSelectedTarget) return;
+    setOlcaLoading(true);
+    try {
+      const client = new OpenLcaClient(olcaUrl);
+      const setup: CalcSetup = {
+        target: { '@type': olcaSelectedTarget['@type'], '@id': olcaSelectedTarget['@id'] },
+        impactMethod: { '@type': olcaMethod['@type'], '@id': olcaMethod['@id'] },
+        amount: 1
+      };
+      const impacts = await client.impactsFor(setup);
+      const gwp = OpenLcaClient.pickGwp(impacts);
+      
+      const indicators = impacts.map(ir => ({
+        name: ir.indicator.name || 'Unknown',
+        unit: ir.indicator.referenceUnit || '',
+        amount: ir.amount
+      }));
+
+      const updateObj: Partial<Material> = {
+        co2Source: 'OpenLCA',
+        lcaIndicators: indicators
+      };
+      if (gwp !== null) updateObj.co2PerUnit = gwp;
+      
+      updateMaterial(olcaTargetMaterialIndex, updateObj);
+      if (showNotification) showNotification('Klimatdata (GWP) uppdaterad från openLCA!', 'success');
+      setShowOpenLcaPanel(false);
+    } catch (e: any) {
+      if (showNotification) showNotification('Kunde inte beräkna miljöpåverkan: ' + e.message, 'error');
+    } finally {
+      setOlcaLoading(false);
+    }
+  };
+
   return (
     <div className="w-full px-4 sm:px-6 md:px-8 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row gap-4 mb-4 justify-between">
@@ -319,6 +489,29 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
             <i className="fa-solid fa-file-excel text-green-600"></i> Importera
           </label>
           <button 
+            onClick={handleFillExampleCO2}
+            className="px-3 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border border-[var(--border)] text-green-700 bg-green-50 hover:bg-green-100 flex items-center gap-2"
+            title="Fyll automatiskt i standard CO2-värden för kända material (ersätt med riktiga EPD-/Boverket-värden innan inlämning!)"
+          >
+            <i className="fa-solid fa-leaf text-green-600"></i> Fyll i exempelvärden
+          </button>
+          
+          <button 
+            onClick={() => {
+              if (!isLocalhost && showNotification) {
+                showNotification('openLCA-koppling körs via scripts/sync-openlca-co2.mjs i hostad drift.', 'info');
+                return;
+              }
+              setShowOpenLcaPanel(!showOpenLcaPanel);
+              if (!showOpenLcaPanel && olcaMethods.length === 0) loadOlcaMethods();
+            }}
+            className={`px-3 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border flex items-center gap-2 ${showOpenLcaPanel ? 'bg-blue-100 border-blue-300 text-blue-800' : 'border-[var(--border)] text-[var(--text2)] hover:bg-gray-50'}`}
+            title="Länka LCA-data via lokalt openLCA (IPC)"
+          >
+            <i className="fa-solid fa-plug text-blue-600"></i> openLCA
+          </button>
+
+          <button 
             onClick={() => { setShowCatManager(!showCatManager); setShowAddForm(false); }}
             className={`px-4 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border ${showCatManager ? 'bg-gray-100 border-gray-300 text-gray-800' : 'border-[var(--border)] text-[var(--text2)] hover:bg-gray-50'}`}
           >
@@ -332,6 +525,67 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           </button>
         </div>
       </div>
+
+      {showOpenLcaPanel && isLocalhost && (
+        <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 mb-4 flex flex-col gap-4 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-sm text-blue-800 flex items-center gap-2">
+              <i className="fa-solid fa-plug"></i> openLCA Integrering (Lokal IPC)
+            </h3>
+            <button onClick={() => setShowOpenLcaPanel(false)} className="text-gray-400 hover:text-gray-600">
+              <i className="fa-solid fa-times"></i>
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">IPC Endpoint URL</label>
+              <input type="text" value={olcaUrl} onChange={e => setOlcaUrl(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Metod för bedömning (Impact Method)</label>
+              <select value={olcaMethod ? olcaMethod['@id'] : ''} onChange={e => setOlcaMethod(olcaMethods.find(m => m['@id'] === e.target.value) || null)} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 disabled:opacity-50" disabled={olcaLoading}>
+                {olcaMethods.map(m => <option key={m['@id']} value={m['@id']}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Sök Mål (ProductSystem / Process)</label>
+              <div className="flex gap-2">
+                <input type="text" value={olcaSearch} onChange={e => setOlcaSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchOlcaTargets(); }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500" placeholder="T.ex. Betong C25/30" />
+                <button onClick={searchOlcaTargets} disabled={olcaLoading} className="bg-white border border-gray-300 px-3 py-1 rounded text-sm hover:bg-gray-50 disabled:opacity-50">Sök</button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Välj mål från sökning</label>
+              <select value={olcaSelectedTarget ? olcaSelectedTarget['@id'] : ''} onChange={e => setOlcaSelectedTarget(olcaResults.find(r => r['@id'] === e.target.value) || null)} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 disabled:opacity-50" disabled={olcaLoading}>
+                <option value="">-- Välj mål --</option>
+                {olcaResults.map(r => <option key={r['@id']} value={r['@id']}>{r.name} ({r['@type']})</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-2 p-3 bg-white border border-blue-100 rounded text-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-gray-600">Material att uppdatera:</span>
+              <select value={olcaTargetMaterialIndex !== null ? olcaTargetMaterialIndex : ''} onChange={e => setOlcaTargetMaterialIndex(e.target.value === '' ? null : Number(e.target.value))} className="border border-gray-300 rounded px-2 py-1 text-sm min-w-[200px] outline-none focus:border-blue-500">
+                <option value="">-- Välj material i listan --</option>
+                {materials.map((m, i) => (
+                  <option key={i} value={i}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            
+            <button 
+              onClick={applyOlcaImpact} 
+              disabled={olcaLoading || olcaTargetMaterialIndex === null || !olcaMethod || !olcaSelectedTarget}
+              className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+            >
+              {olcaLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-calculator"></i>}
+              Hämta & Spara Klimatdata
+            </button>
+          </div>
+        </div>
+      )}
 
       {showCatManager && (
         <div className="bg-[var(--surface2)] border border-[var(--border)] rounded-xl p-4 mb-4 flex flex-col gap-4 animate-in fade-in slide-in-from-top-2">
@@ -623,6 +877,8 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                 <th className="p-2 text-center text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Enhet</th>
                 <th className="p-2 text-center text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Konto</th>
                 <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Pris (kr)</th>
+                <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]" title="kg CO2e per enhet">CO2/enh.</th>
+                <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]" title="LCA Indikatorer">LCA</th>
                 <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Spill %</th>
                 <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Leverantör</th>
                 <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Notering</th>
@@ -632,7 +888,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-[var(--text3)]">
+                  <td colSpan={11} className="p-8 text-center text-[var(--text3)]">
                     <i className="fa-solid fa-box text-2xl opacity-20 mb-3 block"></i>
                     <p>Inga material matchar filtret</p>
                   </td>
@@ -689,6 +945,29 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                           <PriceEditable index={actualIndex} mat={m} />
                         </td>
                         <td className="p-2 px-3 text-right">
+                          <CO2Editable index={actualIndex} mat={m} />
+                        </td>
+                        <td className="p-2 px-3 text-left">
+                          {m.lcaIndicators && m.lcaIndicators.length > 0 ? (
+                            <details className="relative group">
+                              <summary className="cursor-pointer text-[0.65rem] font-medium text-blue-600 hover:underline list-none marker:hidden">
+                                {m.lcaIndicators.length} ind.
+                              </summary>
+                              <div className="absolute z-10 bg-white border border-gray-200 shadow-lg rounded p-2 mt-1 w-48 max-h-48 overflow-y-auto left-0 hidden group-hover:block group-open:block">
+                                <div className="text-[0.6rem] font-bold text-gray-400 mb-1 uppercase tracking-wide border-b border-gray-100 pb-1">Indikatorer</div>
+                                {m.lcaIndicators.map((ind, i) => (
+                                  <div key={i} className="flex justify-between text-[0.65rem] border-b border-gray-50 last:border-0 py-1">
+                                    <span className="font-semibold text-gray-700 truncate pr-2" title={ind.name}>{ind.name}</span>
+                                    <span className="text-gray-500 font-mono whitespace-nowrap">{ind.amount} {ind.unit}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          ) : (
+                            <span className="text-[0.65rem] text-gray-400 italic">—</span>
+                          )}
+                        </td>
+                        <td className="p-2 px-3 text-right">
                           <div className="flex items-center justify-end gap-0.5">
                             <SpillEditable index={actualIndex} mat={m} />
                             <span>%</span>
@@ -731,7 +1010,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                       </tr>
                       {expandedHistory === actualIndex && (
                         <tr className="bg-[var(--surface2)]">
-                          <td colSpan={10} className="p-4 border-b border-[var(--border)]">
+                          <td colSpan={11} className="p-4 border-b border-[var(--border)]">
                             <div className="flex items-center justify-between font-bold text-xs text-[var(--text2)] uppercase tracking-wider mb-2">
                               <span>Prishistorik för {m.name}</span>
                               <button 

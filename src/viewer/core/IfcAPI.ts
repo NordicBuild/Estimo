@@ -6,7 +6,7 @@ export async function getIfcApi(): Promise<WebIFC.IfcAPI> {
   if (!ifcApiPromise) {
     ifcApiPromise = (async () => {
       const api = new WebIFC.IfcAPI();
-      api.SetWasmPath('/');
+      api.SetWasmPath('/wasm/');
       await api.Init();
       return api;
     })();

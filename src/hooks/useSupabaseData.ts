@@ -64,6 +64,7 @@ export function useSupabaseData(
   const [arbetsData, setArbetsData] = useState<ArbetsMoment[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [dataSpaceId, setDataSpaceId] = useState<string | null>(null);
+  const [dbReady, setDbReady] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'manager' | 'user' | null>(null);
   
@@ -139,11 +140,14 @@ export function useSupabaseData(
         ]);
 
       if (sessionError) {
+        setDbReady(false);
         if (sessionError.code === '42P01') {
           showNotification('Tabellen "app_state" saknas i Supabase! Skapa den i SQL Editor.', 'error');
         } else {
-          console.error("Supabase load error:", sessionError);
+          console.warn("Supabase varning (laddar lokalt data istället):", sessionError.message || sessionError);
         }
+      } else {
+        setDbReady(true);
       }
 
       if (sessionData) {
@@ -275,46 +279,46 @@ export function useSupabaseData(
 
   useEffect(() => {
     localStorage.setItem('betong_folders', JSON.stringify(folders));
-    if (dataSpaceId) supabase.from('app_state').upsert({ id: `folders_${dataSpaceId}`, data: folders }).then(({error}) => {
-      if (error) console.error("folder sync error", error);
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `folders_${dataSpaceId}`, data: folders }).then(({error}) => {
+      if (error) console.warn("folder sync error", error);
     });
-  }, [folders, dataSpaceId]);
+  }, [folders, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_active_project_id', activeProjectId);
-    if (user) supabase.from('app_state').upsert({ id: `active_project_id_${user.id}`, data: activeProjectId }).then(({error}) => {
-      if (error) console.error("active project sync error", error);
+    if (dbReady && user) supabase.from('app_state').upsert({ id: `active_project_id_${user.id}`, data: activeProjectId }).then(({error}) => {
+      if (error) console.warn("active project sync error", error);
     });
-  }, [activeProjectId, user]);
+  }, [activeProjectId, user, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_custom_categories', JSON.stringify(customCategories));
-    if (dataSpaceId) supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, data: customCategories }).then(({error}) => {
-      if (error) console.error("custom categories sync error", error);
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, data: customCategories }).then(({error}) => {
+      if (error) console.warn("custom categories sync error", error);
     });
-  }, [customCategories, dataSpaceId]);
+  }, [customCategories, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_company_info', JSON.stringify(companyInfo));
-    if (dataSpaceId) supabase.from('app_state').upsert({ id: `company_info_${dataSpaceId}`, data: companyInfo }).then(({error}) => {
-      if (error) console.error("company info sync error", error);
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_info_${dataSpaceId}`, data: companyInfo }).then(({error}) => {
+      if (error) console.warn("company info sync error", error);
     });
-  }, [companyInfo, dataSpaceId]);
+  }, [companyInfo, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_user_settings', JSON.stringify(userSettings));
-    if (user) supabase.from('app_state').upsert({ id: `user_settings_${user.id}`, data: userSettings }).then(({error}) => {
-      if (error) console.error("user settings sync error", error);
+    if (dbReady && user) supabase.from('app_state').upsert({ id: `user_settings_${user.id}`, data: userSettings }).then(({error}) => {
+      if (error) console.warn("user settings sync error", error);
     });
-  }, [userSettings, user]);
+  }, [userSettings, user, dbReady]);
 
   useEffect(() => {
     if (projects.length > 0) {
-      if (dataSpaceId) supabase.from('app_state').upsert({ id: `projects_${dataSpaceId}`, data: projects }).then(({error}) => {
-        if (error) console.error("projects sync error", error);
+      if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `projects_${dataSpaceId}`, data: projects }).then(({error}) => {
+        if (error) console.warn("projects sync error", error);
       });
     }
-  }, [projects, dataSpaceId]);
+  }, [projects, dataSpaceId, dbReady]);
 
   const switchProject = (newId: string) => {
     const target = projects.find(p => p.id === newId);

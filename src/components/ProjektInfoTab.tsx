@@ -192,6 +192,16 @@ export function ProjektInfoTab({ projectInfo, setProjectInfo, companyInfo, setCo
               placeholder="T.ex. PROJ-2024-001"
             />
           </div>
+          <div className="lg:col-span-1">
+            <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Bruttoarea (BTA) m²</label>
+            <input 
+              type="number" 
+              value={projectInfo.bta || ''}
+              onChange={e => setProjectInfo({ ...projectInfo, bta: parseFloat(e.target.value) || undefined })}
+              className="w-full border border-[var(--border)] rounded-md px-3 py-2 text-sm outline-none focus:border-[var(--blue)] transition-colors bg-white hover:border-gray-300"
+              placeholder="T.ex. 1500"
+            />
+          </div>
           <div className="lg:col-span-2">
             <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Projektnamn</label>
             <input 

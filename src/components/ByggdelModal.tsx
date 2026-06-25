@@ -270,20 +270,20 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
             <div className="flex flex-col md:flex-row gap-4">
               <div className="w-full md:w-1/3">
                 <ByggdelSketch mType={mType} dimensions={{ 
-  length: mLength, 
-  width: mWidth, 
-  height: mHeight, 
-  shaftWidth: mShaftWidth, 
-  shaftHeight: mShaftHeight, 
-  wallThickness: mWallThickness, 
-  slabThickness: mSlabThickness,
-  perimeter: mPerimeter, 
-  area: mArea,
-  stepCount: mStepCount, 
-  stepWidth: mStepWidth, 
-  stepHeight: mStepHeight, 
-  stepDepth: mStepDepth, 
-  rampThickness: mRampThickness 
+  length: Number(String(mLength).replace(',', '.')) || 0, 
+  width: Number(String(mWidth).replace(',', '.')) || 0, 
+  height: Number(String(mHeight).replace(',', '.')) || 0, 
+  shaftWidth: Number(String(mShaftWidth).replace(',', '.')) || 0, 
+  shaftHeight: Number(String(mShaftHeight).replace(',', '.')) || 0, 
+  wallThickness: Number(String(mWallThickness).replace(',', '.')) || 0, 
+  slabThickness: Number(String(mSlabThickness).replace(',', '.')) || 0,
+  perimeter: Number(String(mPerimeter).replace(',', '.')) || 0, 
+  area: Number(String(mArea).replace(',', '.')) || 0,
+  stepCount: Number(String(mStepCount).replace(',', '.')) || 0, 
+  stepWidth: Number(String(mStepWidth).replace(',', '.')) || 0, 
+  stepHeight: Number(String(mStepHeight).replace(',', '.')) || 0, 
+  stepDepth: Number(String(mStepDepth).replace(',', '.')) || 0, 
+  rampThickness: Number(String(mRampThickness).replace(',', '.')) || 0 
 }} />
               </div>
               <div className="w-full md:w-2/3 flex flex-col justify-center">

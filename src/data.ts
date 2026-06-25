@@ -43,6 +43,7 @@ export type ProjectInfo = {
   startDate?: string;
   endDate?: string;
   notes?: string;
+  bta?: number;
 };
 
 export type UserSettings = {
@@ -104,6 +105,9 @@ export type Material = {
   lev?: string;
   note?: string;
   priceHistory?: { date: string; price: number }[];
+  co2PerUnit?: number;
+  co2Source?: string;
+  lcaIndicators?: { name: string; unit: string; amount: number }[];
 };
 
 export type ArbetsMoment = {
@@ -191,7 +195,7 @@ export const DEFAULT_MATERIAL: Partial<Material> = {
 };
 
 export const INITIAL_MATERIALS: Material[] = [
-  {cat:"Betong",name:"Betong C25/30",unit:"m³",price:1750,spill:5,konto:"4011", priceHistory: [
+  {cat:"Betong",name:"Betong C25/30",unit:"m³",price:1750,spill:5,konto:"4011", co2PerUnit: 250, co2Source: "Boverket", lcaIndicators: [{name: "GWP-total", unit: "kg CO2e", amount: 250}, {name: "Försurning (AP)", unit: "mol H+ eq", amount: 0.15}, {name: "Övergödning (EP)", unit: "kg P eq", amount: 0.05}], priceHistory: [
     { date: "2023-01-15", price: 1550 },
     { date: "2023-06-20", price: 1600 },
     { date: "2024-01-10", price: 1680 },

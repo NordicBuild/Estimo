@@ -3,14 +3,17 @@ import * as THREE from 'three';
 import { IFCVManager } from '../IFCVManager';
 import { MeasurementData } from '../utils/MeasurementTool';
 import { AreaVolumeData } from '../utils/AreaVolumeTool';
+import { Byggdel } from '../../data';
+import { calculateDefaultMoments } from '../../calculationHelpers';
 
 interface ViewerUIProps {
   file: File;
   onSelect?: (elementInfo: any) => void;
   onTakeoff?: (takeoffData: any) => void;
+  addParts?: (parts: Omit<Byggdel, 'id'>[]) => void;
 }
 
-export function ViewerUI({ file, onSelect, onTakeoff }: ViewerUIProps) {
+export function ViewerUI({ file, onSelect, onTakeoff, addParts }: ViewerUIProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const managerRef = useRef<IFCVManager | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,6 +25,7 @@ export function ViewerUI({ file, onSelect, onTakeoff }: ViewerUIProps) {
   const [selectedElementID, setSelectedElementID] = useState<number | null>(null);
   const [isolatedObject, setIsolatedObject] = useState<number | null>(null);
   const [isMeasuring, setIsMeasuring] = useState(false);
+  const [measureMode, setMeasureMode] = useState<'distance' | 'area' | 'volume' | 'angle'>('distance');
   const [isAreaVolMeasuring, setIsAreaVolMeasuring] = useState(false);
   const [measurements, setMeasurements] = useState<MeasurementData[]>([]);
   const [areaMeasurements, setAreaMeasurements] = useState<AreaVolumeData[]>([]);
@@ -247,15 +251,19 @@ export function ViewerUI({ file, onSelect, onTakeoff }: ViewerUIProps) {
         }
     };
 
-    const toggleMeasuring = () => {
+    const toggleMeasuring = (mode: 'distance' | 'area' | 'volume' | 'angle') => {
         if (!managerRef.current) return;
-        const active = !isMeasuring;
-        setIsMeasuring(active);
-        if (active) {
-           setIsAreaVolMeasuring(false);
-           managerRef.current.areaVolumeTool.toggleMeasuring(false);
+        
+        if (isMeasuring && measureMode === mode) {
+            setIsMeasuring(false);
+            managerRef.current.measureTool.toggleMeasuring(false);
+        } else {
+            setIsMeasuring(true);
+            setMeasureMode(mode);
+            setIsAreaVolMeasuring(false);
+            managerRef.current.areaVolumeTool.toggleMeasuring(false);
+            managerRef.current.measureTool.toggleMeasuring(true, mode);
         }
-        managerRef.current.measureTool.toggleMeasuring(active);
     };
 
     const toggleAreaVolMeasuring = () => {
@@ -273,6 +281,34 @@ export function ViewerUI({ file, onSelect, onTakeoff }: ViewerUIProps) {
         if (!managerRef.current) return;
         managerRef.current.measureTool.clearAll();
         managerRef.current.areaVolumeTool.clearAll();
+    };
+
+    const handleSendVolumeToCalc = (m: MeasurementData) => {
+        if (!addParts || !m.volume || !m.area) return;
+        const depth = m.volume / m.area;
+        const type = '27.1_PlattaMark'; // Uses area as Q and depth as H
+        const dims = { 
+            length: Math.sqrt(m.area),
+            width: Math.sqrt(m.area),
+            area: m.area, 
+            height: depth, 
+            perimeter: m.perimeter, 
+            volume: m.volume,
+            qty: m.area // for 27.1_PlattaMark, quantity (Q) represents area
+        };
+        const part: Omit<Byggdel, 'id'> = {
+            name: `Uppmätt Volym (${m.volume.toFixed(1)} m³)`,
+            type: type,
+            qty: m.area,
+            antal: 1,
+            unit: "m3",
+            comment: `BIM Mätning (Djup: ${depth.toFixed(2)}m)`,
+            dimensions: dims,
+            moments: calculateDefaultMoments(type, dims),
+            active: true
+        };
+        addParts([part]);
+        alert("Skickades till kalkylen!");
     };
 
   return (
@@ -346,18 +382,39 @@ export function ViewerUI({ file, onSelect, onTakeoff }: ViewerUIProps) {
                 {/* Measurement Tools */}
                 <div className="flex bg-black/60 rounded-md border border-white/10 overflow-hidden">
                     <button 
-                        className={`px-3 py-2 text-sm transition-colors ${isMeasuring ? 'bg-[var(--blue)] text-white' : 'text-white hover:bg-black/80'}`}
-                        onClick={toggleMeasuring}
+                        className={`px-3 py-2 text-sm transition-colors ${isMeasuring && measureMode === 'distance' ? 'bg-[var(--blue)] text-white' : 'text-white hover:bg-black/80'}`}
+                        onClick={() => toggleMeasuring('distance')}
                         title="Mät avstånd (Klicka på två punkter)"
                     >
                         <i className="fa-solid fa-ruler"></i>
                     </button>
                     <button 
-                        className={`px-3 py-2 text-sm transition-colors border-l border-white/10 ${isAreaVolMeasuring ? 'bg-[var(--blue)] text-white' : 'text-white hover:bg-black/80'}`}
-                        onClick={toggleAreaVolMeasuring}
-                        title="Markera yta för area/volym (Klicka på element)"
+                        className={`px-3 py-2 text-sm transition-colors border-l border-white/10 ${isMeasuring && measureMode === 'area' ? 'bg-[var(--blue)] text-white' : 'text-white hover:bg-black/80'}`}
+                        onClick={() => toggleMeasuring('area')}
+                        title="Mät area (Rita polygon, högerklicka för att avsluta)"
+                    >
+                        <i className="fa-solid fa-draw-polygon"></i>
+                    </button>
+                    <button 
+                        className={`px-3 py-2 text-sm transition-colors border-l border-white/10 ${isMeasuring && measureMode === 'volume' ? 'bg-[var(--blue)] text-white' : 'text-white hover:bg-black/80'}`}
+                        onClick={() => toggleMeasuring('volume')}
+                        title="Mät volym (Rita polygon och ange djup)"
                     >
                         <i className="fa-solid fa-cube"></i>
+                    </button>
+                    <button 
+                        className={`px-3 py-2 text-sm transition-colors border-l border-white/10 ${isMeasuring && measureMode === 'angle' ? 'bg-[var(--blue)] text-white' : 'text-white hover:bg-black/80'}`}
+                        onClick={() => toggleMeasuring('angle')}
+                        title="Mät vinkel (Klicka tre punkter)"
+                    >
+                        <i className="fa-solid fa-angle-left"></i>
+                    </button>
+                    <button 
+                        className={`px-3 py-2 text-sm transition-colors border-l border-white/10 ${isAreaVolMeasuring ? 'bg-[var(--blue)] text-white' : 'text-white hover:bg-black/80'}`}
+                        onClick={toggleAreaVolMeasuring}
+                        title="Hämta yta för area/volym (Klicka på element)"
+                    >
+                        <i className="fa-solid fa-hand-pointer"></i>
                     </button>
                     {(measurements.length > 0 || areaMeasurements.length > 0) && (
                         <button 
@@ -392,7 +449,31 @@ export function ViewerUI({ file, onSelect, onTakeoff }: ViewerUIProps) {
                     className="absolute top-0 left-0 bg-black/80 text-white px-2 py-1 rounded text-xs border border-white/20 shadow pointer-events-none select-none z-20 font-mono"
                     style={{ willChange: 'transform' }}
                 >
-                    {m.distance.toFixed(3)} m
+                    {m.type === 'distance' && m.distance !== undefined && `${m.distance.toFixed(3)} m`}
+                    {m.type === 'area' && m.area !== undefined && (
+                        <div>
+                            <div>{m.area.toFixed(2)} m²</div>
+                            {m.perimeter !== undefined && <div className="text-[10px] text-gray-400">Omkrets: {m.perimeter.toFixed(2)} m</div>}
+                        </div>
+                    )}
+                    {m.type === 'volume' && m.volume !== undefined && (
+                        <div>
+                            <div>{m.volume.toFixed(2)} m³</div>
+                            {m.area !== undefined && <div className="text-[10px] text-gray-400 mb-1">Area: {m.area.toFixed(2)} m²</div>}
+                            {addParts && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSendVolumeToCalc(m);
+                                    }}
+                                    className="mt-1 px-2 py-1 bg-[var(--blue)] hover:brightness-110 text-white text-[10px] rounded pointer-events-auto shadow-sm w-full transition-all flex items-center justify-center gap-1"
+                                >
+                                    <i className="fa-solid fa-arrow-right-to-bracket"></i> Skicka till kalkyl
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    {m.type === 'angle' && m.angle !== undefined && `${m.angle.toFixed(1)}°`}
                 </div>
             ))}
 

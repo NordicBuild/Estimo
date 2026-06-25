@@ -10,7 +10,6 @@ import { SammanstallnTab } from "./components/SammanstallnTab";
 import { AnbudTab } from "./components/AnbudTab";
 import { AnalysTab } from "./components/AnalysTab";
 import { PlaneringTab } from "./components/PlaneringTab";
-import { IfcTab } from "./components/IfcTab";
 import { SlutsidaTab } from "./components/SlutsidaTab";
 import { HemsidaTab } from "./components/HemsidaTab";
 import { AdminTab } from "./components/AdminTab";
@@ -31,7 +30,7 @@ import { calculateBaseMoments, calculateDefaultMoments } from "./calculationHelp
 
 export default function App() {
   const [appMode, setAppMode] = useState<'kalkyl' | 'admin'>(() => (localStorage.getItem('betong_app_mode') as any) || 'kalkyl');
-  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'ifc' | 'admin'>(() => {
+  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter'>(() => {
     return (localStorage.getItem('betong_active_tab') as any) || 'projekt';
   });
   const [adminSubTab, setAdminSubTab] = useState<'oversikt' | 'kunder' | 'fakturor' | 'register' | 'installningar'>(() => {
@@ -331,7 +330,7 @@ export default function App() {
       try {
         const { error } = await supabase.from('app_state').upsert({ id: `materials_${dataSpaceId}`, data: newMats });
         if (error) {
-          console.error("pushMaterials error:", error);
+          console.warn("pushMaterials error:", error);
           showNotification("Fel vid databassparning (Material), sparat lokalt. " + error.message, "error");
         }
       } catch(e) {}
@@ -345,7 +344,7 @@ export default function App() {
       try {
         const { error } = await supabase.from('app_state').upsert({ id: `arbetsmoments_${dataSpaceId}`, data: newArbs });
         if (error) {
-          console.error("pushArbetsData error:", error);
+          console.warn("pushArbetsData error:", error);
           showNotification("Fel vid databassparning (Arbetsmoment), sparat lokalt. " + error.message, "error");
         }
       } catch(e) {}
@@ -1200,6 +1199,8 @@ export default function App() {
           <div className="fixed inset-0 bg-black/50 z-40 lg:hidden print:hidden" onClick={() => setSidebarOpen(false)}></div>
         )}
 
+        <WorkspaceNav activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+
         <div className="flex-1 flex flex-col min-w-0">
           <WorkspaceActions
             openModal={openModal}
@@ -1209,10 +1210,7 @@ export default function App() {
             downloadTemplate={downloadTemplate}
           />
 
-          <div className="flex-1 flex min-h-0">
-            <WorkspaceNav activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-            
-            <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf', 'bim', 'ifc'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
+          <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf', 'bim'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
         {activeTab === 'hemsida' && (
           <HemsidaTab 
             user={user}
@@ -1321,7 +1319,7 @@ export default function App() {
           <PdfMeasurementTab addParts={addIfcByggdelar} />
         )}
         {activeTab === 'bim' && (
-          <BimMeasurementTab />
+          <BimMeasurementTab addParts={addIfcByggdelar} />
         )}
         {activeTab === 'material' && (
           <MaterialTab 
@@ -1356,15 +1354,83 @@ export default function App() {
           </div>
         )}
         {activeTab === 'analys' && <AnalysTab calcResult={calcResult} />}
-        {activeTab === 'sammanstalln' && <SammanstallnTab calcResult={calcResult} materials={materials} updateMaterial={updateMaterial} projectInfo={projectInfo} companyInfo={companyInfo} />}
+        {activeTab === 'sammanstalln' && <SammanstallnTab calcResult={calcResult} materials={materials} updateMaterial={updateMaterial} projectInfo={projectInfo} setProjectInfo={setProjectInfo} companyInfo={companyInfo} />}
         {activeTab === 'planering' && <PlaneringTab calcResult={calcResult} byggdelar={byggdelar} reorderByggdelar={reorderByggdelar} reorderMoment={reorderMoment} updateStartDay={updateStartDay} updatePlanDates={updatePlanDates} updateMomentWorkers={updateMomentWorkers} updateByggdelColor={updateByggdelColor} />}
         {activeTab === 'slutsida' && <SlutsidaTab settings={settings} setSettings={setSettings} calcResult={calcResult} />}
         {activeTab === 'anbud' && <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} updateByggdelOfferPrice={updateByggdelOfferPrice} />}
-        <div style={{ display: activeTab === 'ifc' ? 'block' : 'none', height: '100%', width: '100%' }}>
-          <IfcTab addIfcByggdelar={addIfcByggdelar} activeProjectId={activeProjectId} />
-        </div>
+        {activeTab === 'dokument_ffu' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">description</span>
+              <h2 className="text-2xl font-bold text-on-surface">FFU</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'dokument_modell' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">architecture</span>
+              <h2 className="text-2xl font-bold text-on-surface">Modell</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'dokument_kommunikation' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">forum</span>
+              <h2 className="text-2xl font-bold text-on-surface">Kommunikation</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'arbetare' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">engineering</span>
+              <h2 className="text-2xl font-bold text-on-surface">Arbetare</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'fastigheter' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">home_work</span>
+              <h2 className="text-2xl font-bold text-on-surface">Fastigheter</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'maskiner' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">precision_manufacturing</span>
+              <h2 className="text-2xl font-bold text-on-surface">Maskiner</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'bilar' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">directions_car</span>
+              <h2 className="text-2xl font-bold text-on-surface">Bilar</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
+        {activeTab === 'ovrigt' && (
+          <div className="p-8 flex items-center justify-center h-full">
+            <div className="text-center">
+              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">category</span>
+              <h2 className="text-2xl font-bold text-on-surface">Övrigt</h2>
+              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
+            </div>
+          </div>
+        )}
       </main>
-      </div>
       </div>
       </div>
 

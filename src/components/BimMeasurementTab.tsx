@@ -2,11 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ViewerUI } from '../viewer/components/ViewerUI';
 import { getIfcFile, saveIfcFile } from '../ifcStorage';
 
+import { Byggdel } from '../data';
+
 interface Props {
   activeProjectId?: string;
+  addParts?: (parts: Omit<Byggdel, 'id'>[]) => void;
 }
 
-export function BimMeasurementTab({ activeProjectId = "default" }: Props) {
+export function BimMeasurementTab({ activeProjectId = "default", addParts }: Props) {
   const [ifcFile, setIfcFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,7 +87,7 @@ export function BimMeasurementTab({ activeProjectId = "default" }: Props) {
             </div>
             
             <div className="flex-1 relative min-h-0">
-               <ViewerUI file={ifcFile} />
+               <ViewerUI file={ifcFile} addParts={addParts} />
             </div>
           </div>
       );

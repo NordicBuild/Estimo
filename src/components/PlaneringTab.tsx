@@ -85,6 +85,8 @@ export function PlaneringTab({ calcResult, byggdelar, reorderByggdelar, reorderM
   const timelineRef = React.useRef<HTMLDivElement>(null);
   const [draggingBar, setDraggingBar] = useState<{ type: 'part' | 'moment', partId: number, mIndex?: number, startX: number, initialStartDate: string, currentOffsetDays: number, totalDays: number } | null>(null);
 
+  const parts = calcResult.parts.filter(p => p.active !== false);
+
   React.useEffect(() => {
     if (!draggingBar) return;
     
@@ -127,8 +129,6 @@ export function PlaneringTab({ calcResult, byggdelar, reorderByggdelar, reorderM
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [draggingBar, parts, updatePlanDates]);
-
-  const parts = calcResult.parts.filter(p => p.active !== false);
 
   const schedule = useMemo(() => {
     let currentDayOffset = 0;

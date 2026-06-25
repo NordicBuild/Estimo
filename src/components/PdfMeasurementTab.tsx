@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { Byggdel, INITIAL_TIDSFAKTORER } from "../data";
 import { calculateDefaultMoments } from "../calculationHelpers";
+import { PageScales, scaleForPage, setPageScale, serializePageScales, deserializePageScales, emptyPageScales } from "../pdf/pageScales";
+import { Scale, deriveScale, toRealDistance, toRealArea, presetScale, ratioFromScale } from "../pdf/scaleHelpers";
 
 // Use CDN for worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -43,8 +45,8 @@ export function PdfMeasurementTab({
     | "pencil"
     | "calibrate"
   >("pan");
-  const [scale, setScale] = useState(1);
-  const [isScaleSet, setIsScaleSet] = useState(false);
+  const [pageScales, setPageScales] = useState<PageScales>(emptyPageScales());
+  const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [showScaleWarning, setShowScaleWarning] = useState(false);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
@@ -58,14 +60,25 @@ export function PdfMeasurementTab({
     onCancel?: () => void;
   } | null>(null);
 
-  const handleSetScale = (newScale: number) => {
-    setScale(newScale);
-    setIsScaleSet(true);
+  const [calibrateDialog, setCalibrateDialog] = useState<{
+    isOpen: boolean;
+    pxDistance: number;
+    length: string;
+    unit: string;
+  } | null>(null);
+
+  const handleSetScale = (scaleObj: Scale) => {
+    const updatedScales = setPageScale(pageScales, pageNum, scaleObj);
+    setPageScales(updatedScales);
     setShowScaleWarning(false);
+    if (pdfFileName) {
+      localStorage.setItem(`pdf_scales_${pdfFileName}`, serializePageScales(updatedScales));
+    }
 
     // Recalculate existing measurements with the new scale
     setMeasurements((prev) =>
       prev.map((m) => {
+        if (m.page !== pageNum) return m;
         if (m.tool === "count" || m.tool === "text") return m;
 
         let newValue = 0;
@@ -76,7 +89,7 @@ export function PdfMeasurementTab({
             const p2 = m.points[(i + 1) % m.points.length];
             area += p1.x * p2.y - p2.x * p1.y;
           }
-          newValue = Math.abs(area / 2) * (newScale * newScale);
+          newValue = toRealArea(Math.abs(area / 2), scaleObj.pixelsPerUnit);
           if (m.tool === "volume" && m.depth) {
             newValue *= m.depth;
           }
@@ -87,7 +100,7 @@ export function PdfMeasurementTab({
             const dist = Math.sqrt(
               Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2),
             );
-            newValue = dist * newScale;
+            newValue = toRealDistance(dist, scaleObj.pixelsPerUnit);
           }
         } else if (m.tool === "polyline") {
           let length = 0;
@@ -98,14 +111,13 @@ export function PdfMeasurementTab({
               Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2),
             );
           }
-          newValue = length * newScale;
+          newValue = toRealDistance(length, scaleObj.pixelsPerUnit);
         } else if (m.tool === "rectangle") {
           if (m.points.length >= 2) {
-            newValue =
-              Math.abs(m.points[1].x - m.points[0].x) *
-              newScale *
-              Math.abs(m.points[1].y - m.points[0].y) *
-              newScale;
+            newValue = toRealArea(
+              Math.abs(m.points[1].x - m.points[0].x) * Math.abs(m.points[1].y - m.points[0].y),
+              scaleObj.pixelsPerUnit
+            );
           }
         }
         return { ...m, value: newValue };
@@ -114,8 +126,9 @@ export function PdfMeasurementTab({
   };
 
   const handleToolSelect = (tool: typeof currentTool) => {
+    const currentScale = scaleForPage(pageScales, pageNum, presetScale(0));
     if (
-      !isScaleSet &&
+      currentScale.invalid &&
       ["distance", "polyline", "area", "volume", "rectangle", "line"].includes(
         tool,
       )
@@ -132,14 +145,16 @@ export function PdfMeasurementTab({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const transformRef = useRef({ scale: 1.0, tx: 0, ty: 0 });
+  const renderTaskRef = useRef<any>(null);
   const [isDrawingPencil, setIsDrawingPencil] = useState(false);
 
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(1);
-  const [zoom, setZoom] = useState(1.0);
+  const [displayZoom, setDisplayZoom] = useState(1.0);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
-  const dragStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<
     "ledger" | "properties"
@@ -159,43 +174,41 @@ export function PdfMeasurementTab({
   const [activeMeasurementMultiplier, setActiveMeasurementMultiplier] =
     useState(1);
 
+  const updateTransform = () => {
+    if (wrapperRef.current) {
+      const { scale, tx, ty } = transformRef.current;
+      wrapperRef.current.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    }
+  };
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
-      // Allow scroll when not pressing Ctrl, or always zoom? AutoCAD always zooms with wheel.
       e.preventDefault();
       const zoomSensitivity = 1.25;
       const isZoomIn = e.deltaY < 0;
       const zoomFactor = isZoomIn ? zoomSensitivity : 1 / zoomSensitivity;
 
-      setZoom((prevZoom) => {
-        let newZoom = prevZoom * zoomFactor;
-        newZoom = Math.max(0.1, Math.min(25.0, newZoom));
-        const scaleChange = newZoom / prevZoom;
+      const oldScale = transformRef.current.scale;
+      let newScale = oldScale * zoomFactor;
+      newScale = Math.max(0.1, Math.min(25.0, newScale));
 
-        const contentWrapper = container.querySelector(
-          ".pdf-content-wrapper",
-        ) as HTMLElement;
+      const k = newScale / oldScale;
+      
+      const rect = container.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
 
-        requestAnimationFrame(() => {
-          if (contentWrapper) {
-            const wrapperRect = contentWrapper.getBoundingClientRect();
-            // Calculate mouse position relative to the scaled content
-            const pointerXRelativeToContent = e.clientX - wrapperRect.left;
-            const pointerYRelativeToContent = e.clientY - wrapperRect.top;
+      transformRef.current.tx = cx - (cx - transformRef.current.tx) * k;
+      transformRef.current.ty = cy - (cy - transformRef.current.ty) * k;
+      transformRef.current.scale = newScale;
 
-            const dx = pointerXRelativeToContent * (scaleChange - 1);
-            const dy = pointerYRelativeToContent * (scaleChange - 1);
-
-            container.scrollLeft += dx;
-            container.scrollTop += dy;
-          }
-        });
-
-        return newZoom;
-      });
+      requestAnimationFrame(updateTransform);
+      
+      // Throttle display zoom update
+      requestAnimationFrame(() => setDisplayZoom(newScale));
     };
 
     container.addEventListener("wheel", handleWheel, { passive: false });
@@ -214,22 +227,20 @@ export function PdfMeasurementTab({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+
   const handlePointerDown = (e: React.PointerEvent) => {
     // Middle mouse button or Pan tool
-    if (e.button === 1) {
+    if (e.button === 1 || currentTool === "pan") {
       e.preventDefault();
       setIsPanning(true);
-    } else if (currentTool === "pan") {
-      setIsPanning(true);
-    }
-
-    if (e.button === 1 || currentTool === "pan") {
       if (containerRef.current) {
+        (e.target as Element).setPointerCapture(e.pointerId);
         dragStart.current = {
           x: e.clientX,
           y: e.clientY,
-          scrollLeft: containerRef.current.scrollLeft,
-          scrollTop: containerRef.current.scrollTop,
+          tx: transformRef.current.tx,
+          ty: transformRef.current.ty,
         };
       }
     }
@@ -239,12 +250,18 @@ export function PdfMeasurementTab({
     if (isPanning && containerRef.current) {
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
-      containerRef.current.scrollLeft = dragStart.current.scrollLeft - dx;
-      containerRef.current.scrollTop = dragStart.current.scrollTop - dy;
+      
+      transformRef.current.tx = dragStart.current.tx + dx;
+      transformRef.current.ty = dragStart.current.ty + dy;
+      
+      requestAnimationFrame(updateTransform);
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (isPanning) {
+      (e.target as Element).releasePointerCapture(e.pointerId);
+    }
     setIsPanning(false);
   };
 
@@ -252,13 +269,20 @@ export function PdfMeasurementTab({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setPdfFileName(file.name);
+    const savedScales = localStorage.getItem(`pdf_scales_${file.name}`);
+    if (savedScales) {
+      setPageScales(deserializePageScales(savedScales));
+    } else {
+      setPageScales(emptyPageScales());
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     try {
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const doc = await loadingTask.promise;
       setPdfDoc(doc);
       setPageNum(1);
-      setZoom(1.0);
       setMeasurements([]);
       setCurrentPoints([]);
     } catch (err) {
@@ -270,7 +294,7 @@ export function PdfMeasurementTab({
   const renderPage = async (
     doc: pdfjsLib.PDFDocumentProxy,
     num: number,
-    currentZoom: number,
+    sharpScale: number = 1.0
   ) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -278,37 +302,72 @@ export function PdfMeasurementTab({
     if (!ctx) return;
 
     const page = await doc.getPage(num);
-    const viewport = page.getViewport({ scale: currentZoom });
+    const baseViewport = page.getViewport({ scale: 1.0 });
+    
+    setCanvasSize({ width: baseViewport.width, height: baseViewport.height });
 
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-    setCanvasSize({ width: viewport.width, height: viewport.height });
+    const dpr = window.devicePixelRatio || 1;
+    const renderScale = sharpScale * dpr;
+    const renderViewport = page.getViewport({ scale: renderScale });
+
+    canvas.width = renderViewport.width;
+    canvas.height = renderViewport.height;
+    canvas.style.width = `${baseViewport.width}px`;
+    canvas.style.height = `${baseViewport.height}px`;
+
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
+    }
 
     const renderContext = {
       canvasContext: ctx,
-      viewport: viewport,
+      viewport: renderViewport,
     };
+    
+    const renderTask = page.render(renderContext);
+    renderTaskRef.current = renderTask;
+
     try {
-      await page.render(renderContext).promise;
+      await renderTask.promise;
     } catch (err) {
-      console.log("Cancelled render");
+      if ((err as any).name !== 'RenderingCancelledException') {
+        console.log("Cancelled render");
+      }
     }
   };
 
-  // Debounced rendering to avoid stutter while zooming
+  // Base rendering when page changes
+  useEffect(() => {
+    if (pdfDoc) {
+      const BASE_SHARP = 1.5;
+      renderPage(pdfDoc, pageNum, BASE_SHARP);
+      // Reset zoom on page change
+      transformRef.current = { scale: 1.0, tx: 0, ty: 0 };
+      setDisplayZoom(1.0);
+      requestAnimationFrame(updateTransform);
+    }
+  }, [pageNum, pdfDoc]);
+
+  // Debounced sharp rendering when zoom settles
   useEffect(() => {
     if (pdfDoc) {
       const timeout = setTimeout(() => {
-        renderPage(pdfDoc, pageNum, zoom);
-      }, 150);
+        // If zoom is high, render sharper. Don't go crazy high though.
+        const BASE_SHARP = 1.5;
+        const targetSharp = Math.max(BASE_SHARP, displayZoom * 1.2);
+        // limit sharp scale to prevent massive memory usage
+        const clampedSharp = Math.min(targetSharp, 6.0); 
+        
+        renderPage(pdfDoc, pageNum, clampedSharp);
+      }, 300);
       return () => clearTimeout(timeout);
     }
-  }, [pageNum, zoom, pdfDoc]);
+  }, [displayZoom, pageNum, pdfDoc]);
 
   const getSnappedPosition = (px: number, py: number) => {
     if (!isSnappingEnabled) return { x: px, y: py };
 
-    const snapThreshold = snapDistance / zoom;
+    const snapThreshold = snapDistance / transformRef.current.scale;
     let closestPoint: Point | null = null;
     let minDistance = snapThreshold;
 
@@ -410,11 +469,20 @@ export function PdfMeasurementTab({
     )
       return;
 
+    const currentScaleObj = scaleForPage(pageScales, pageNum, presetScale(0));
+    if (
+      currentScaleObj.invalid &&
+      ["distance", "polyline", "area", "volume", "rectangle", "line"].includes(currentTool)
+    ) {
+      setShowScaleWarning(true);
+      return;
+    }
+
     e.currentTarget.setPointerCapture(e.pointerId);
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
-    let x = (e.clientX - rect.left) / zoom;
-    let y = (e.clientY - rect.top) / zoom;
+    let x = (e.clientX - rect.left) / transformRef.current.scale;
+    let y = (e.clientY - rect.top) / transformRef.current.scale;
 
     if (!["text", "count", "pencil", "pan", "select"].includes(currentTool)) {
       const snapped = getSnappedPosition(x, y);
@@ -507,45 +575,21 @@ export function PdfMeasurementTab({
         );
 
         if (currentTool === "calibrate") {
-          setDialogConfig({
+          setCalibrateDialog({
             isOpen: true,
-            title: "Kalibrera Skala",
-            message: "Mata in den verkliga längden i meter (t.ex. 10.5):",
-            defaultValue: "",
-            onConfirm: (input) => {
-              if (input && !isNaN(Number(input.replace(",", ".")))) {
-                const val = Number(input.replace(",", "."));
-                const newScale = val / pxDistance;
-                handleSetScale(newScale);
-                setDialogConfig({
-                  isOpen: true,
-                  isAlert: true,
-                  title: "Kalibrering slutförd",
-                  message: `Ritningen är kalibrerad! Skala: 1px = ${newScale.toFixed(6)}m`,
-                  onConfirm: () => {
-                    setDialogConfig(null);
-                  },
-                });
-              } else {
-                setDialogConfig(null);
-              }
-              setCurrentPoints([]);
-              handleToolSelect("select");
-            },
-            onCancel: () => {
-              setCurrentPoints([]);
-              handleToolSelect("select");
-              setDialogConfig(null);
-            },
+            pxDistance,
+            length: "",
+            unit: "m"
           });
           return;
         }
 
-        const realDistance = pxDistance * scale;
-
-        let val = realDistance;
+        let val = toRealDistance(pxDistance, currentScaleObj.pixelsPerUnit);
         if (currentTool === "rectangle") {
-          val = Math.abs(p2.x - p1.x) * scale * Math.abs(p2.y - p1.y) * scale;
+          val = toRealArea(
+            Math.abs(p2.x - p1.x) * Math.abs(p2.y - p1.y),
+            currentScaleObj.pixelsPerUnit
+          );
         }
 
         const newMeasurement: Measurement = {
@@ -579,8 +623,8 @@ export function PdfMeasurementTab({
     ) {
       const svg = e.currentTarget;
       const rect = svg.getBoundingClientRect();
-      let x = (e.clientX - rect.left) / zoom;
-      let y = (e.clientY - rect.top) / zoom;
+      let x = (e.clientX - rect.left) / transformRef.current.scale;
+      let y = (e.clientY - rect.top) / transformRef.current.scale;
 
       let isCurrentlySnapped = false;
       if (!["text", "count", "pencil", "pan", "select"].includes(currentTool)) {
@@ -597,8 +641,8 @@ export function PdfMeasurementTab({
         setCurrentPoints([
           ...currentPoints,
           {
-            x: (e.clientX - rect.left) / zoom,
-            y: (e.clientY - rect.top) / zoom,
+            x: (e.clientX - rect.left) / transformRef.current.scale,
+            y: (e.clientY - rect.top) / transformRef.current.scale,
           },
         ]);
       }
@@ -635,6 +679,7 @@ export function PdfMeasurementTab({
     ) {
       let value = 0;
       let d = 0;
+      const currentScaleObj = scaleForPage(pageScales, pageNum, presetScale(0));
 
       const finishMeasurement = (finalValue: number, finalDepth: number) => {
         const newMeasurement: Measurement = {
@@ -674,7 +719,7 @@ export function PdfMeasurementTab({
           area += currentPoints[i].x * currentPoints[j].y;
           area -= currentPoints[j].x * currentPoints[i].y;
         }
-        value = Math.abs(area / 2) * (scale * scale);
+        value = toRealArea(Math.abs(area / 2), currentScaleObj.pixelsPerUnit);
 
         if (currentTool === "volume") {
           setDialogConfig({
@@ -710,7 +755,7 @@ export function PdfMeasurementTab({
             Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2),
           );
         }
-        value = length * scale;
+        value = toRealDistance(length, currentScaleObj.pixelsPerUnit);
         finishMeasurement(value, 0);
       }
     }
@@ -725,7 +770,15 @@ export function PdfMeasurementTab({
     const otherParts: any[] = [];
 
     measurements.forEach((m) => {
-      let type = m.byggdelType || "72.1_Allman_Ritningsmatning";
+      let type = m.byggdelType;
+      if (!type) {
+        if (m.tool === "volume") {
+          type = "34.1_Bjalklag";
+        } else {
+          type = "72.1_Allman_Ritningsmatning";
+        }
+      }
+      
       let name = m.name;
       let unit =
         m.tool === "area"
@@ -770,17 +823,21 @@ export function PdfMeasurementTab({
         length:
           m.tool === "distance" || m.tool === "line" || m.tool === "polyline"
             ? m.value || 0
-            : Math.sqrt(m.value || 0),
+            : m.tool === "volume"
+              ? Math.sqrt((m.value || 0) / (m.depth || 1))
+              : Math.sqrt(m.value || 0),
         width: 0.2, // default guess
-        height: m.height || 3.0,
+        height: m.tool === "volume" ? m.depth || 0 : m.height || 3.0,
         area:
           m.tool === "area"
             ? m.value || 0
-            : m.tool === "distance" ||
-                m.tool === "line" ||
-                m.tool === "polyline"
-              ? (m.value || 0) * (m.height || 3.0)
-              : 0,
+            : m.tool === "volume"
+              ? (m.value || 0) / (m.depth || 1)
+              : m.tool === "distance" ||
+                  m.tool === "line" ||
+                  m.tool === "polyline"
+                ? (m.value || 0) * (m.height || 3.0)
+                : 0,
         qty: m.tool === "count" ? m.value || 1 : 1,
       };
 
@@ -791,7 +848,7 @@ export function PdfMeasurementTab({
         antal: m.multiplier || 1,
         unit,
         active: true,
-        comment: `Exporterad från PDF${m.height ? ` (Höjd/Djup: ${m.height}m)` : ""}`,
+        comment: `Exporterad från PDF${m.tool === "volume" && m.depth ? ` (Djup: ${m.depth}m)` : m.height ? ` (Höjd/Djup: ${m.height}m)` : ""}`,
         dimensions: dims,
         moments: calculateDefaultMoments(type, dims),
       };
@@ -825,7 +882,29 @@ export function PdfMeasurementTab({
   };
 
   // Helper for non-scaling stroke
-  const getStrokeWidth = (basePx: number) => basePx / zoom;
+  const getInverseScale = (basePx: number) => basePx / displayZoom;
+
+  const handleZoomIn = () => {
+    let newScale = Math.min(25, transformRef.current.scale * 1.25);
+    transformRef.current.scale = newScale;
+    updateTransform();
+    setDisplayZoom(newScale);
+  };
+
+  const handleZoomOut = () => {
+    let newScale = Math.max(0.1, transformRef.current.scale / 1.25);
+    transformRef.current.scale = newScale;
+    updateTransform();
+    setDisplayZoom(newScale);
+  };
+
+  const handleZoomReset = () => {
+    transformRef.current.scale = 1.0;
+    transformRef.current.tx = 0;
+    transformRef.current.ty = 0;
+    updateTransform();
+    setDisplayZoom(1.0);
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#f4f5f5] overflow-hidden">
@@ -867,7 +946,7 @@ export function PdfMeasurementTab({
           <div className="w-px h-5 bg-gray-300 mx-1 hidden sm:block"></div>
 
           <button
-            onClick={() => setZoom((z) => Math.max(0.1, z / 1.2))}
+            onClick={handleZoomOut}
             className="p-1 hover:bg-gray-100 rounded text-gray-700"
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -875,10 +954,10 @@ export function PdfMeasurementTab({
             </span>
           </button>
           <span className="font-mono w-12 text-center text-gray-700">
-            {Math.round(zoom * 100)}%
+            {Math.round(displayZoom * 100)}%
           </span>
           <button
-            onClick={() => setZoom((z) => Math.min(25, z * 1.2))}
+            onClick={handleZoomIn}
             className="p-1 hover:bg-gray-100 rounded text-gray-700"
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -886,7 +965,7 @@ export function PdfMeasurementTab({
             </span>
           </button>
           <button
-            onClick={() => setZoom(1.0)}
+            onClick={handleZoomReset}
             className="p-1 hover:bg-gray-100 rounded text-gray-700"
             title="Återställ zoom"
           >
@@ -1088,7 +1167,7 @@ export function PdfMeasurementTab({
         {/* Main Canvas Area */}
         <div
           ref={containerRef}
-          className={`flex-1 overflow-auto bg-[#e5e7eb] relative p-8 cursor-crosshair`}
+          className={`flex-1 overflow-hidden bg-[#e5e7eb] relative p-0 cursor-crosshair`}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -1135,14 +1214,16 @@ export function PdfMeasurementTab({
             </div>
           )}
           <div
-            className={`pdf-content-wrapper relative inline-block shadow-xl mx-auto ${currentTool === "pan" && !isPanning ? "cursor-grab" : ""} ${isPanning ? "cursor-grabbing" : ""}`}
+            ref={wrapperRef}
+            className={`pdf-content-wrapper absolute top-0 left-0 origin-top-left ${currentTool === "pan" && !isPanning ? "cursor-grab" : ""} ${isPanning ? "cursor-grabbing" : ""}`}
             style={{
-              width: canvasSize.width || "auto",
-              height: canvasSize.height || "auto",
+              width: canvasSize.width || "100%",
+              height: canvasSize.height || "100%",
+              willChange: "transform"
             }}
           >
             <canvas
-              className={`bg-white ${pdfDoc ? "block" : "hidden"}`}
+              className={`bg-white shadow-xl ${pdfDoc ? "block" : "hidden"} absolute inset-0 w-full h-full`}
               ref={canvasRef}
             />
             {pdfDoc && (
@@ -1158,11 +1239,9 @@ export function PdfMeasurementTab({
                     setCurrentPoints([]);
                   }
                 }}
-                className="absolute inset-0 z-10 touch-none"
-                width={canvasSize.width}
-                height={canvasSize.height}
+                className="absolute inset-0 z-10 touch-none w-full h-full"
               >
-                <g transform={`scale(${zoom})`}>
+                <g>
                   {/* Draw existing measurements */}
                   {measurements
                     .filter((m) => m.page === pageNum)
@@ -1202,7 +1281,7 @@ export function PdfMeasurementTab({
                               ? "m³"
                               : "m";
                         return (
-                          <g transform={`translate(${center.x}, ${center.y})`}>
+                          <g transform={`translate(${center.x}, ${center.y}) scale(${1 / displayZoom})`}>
                             <rect
                               x="-35"
                               y="-12"
@@ -1212,14 +1291,15 @@ export function PdfMeasurementTab({
                               fill="white"
                               fillOpacity="0.85"
                               stroke={m.color}
-                              strokeWidth={getStrokeWidth(1)}
+                              strokeWidth={1}
+                              vectorEffect="non-scaling-stroke"
                             />
                             <text
                               x="0"
                               y="4"
                               textAnchor="middle"
                               fill="#1f2937"
-                              fontSize={getStrokeWidth(12)}
+                              fontSize={12}
                               fontWeight="bold"
                               fontFamily="sans-serif"
                             >
@@ -1239,24 +1319,25 @@ export function PdfMeasurementTab({
                             <circle
                               cx="0"
                               cy="0"
-                              r={getStrokeWidth(12)}
+                              r={12 / displayZoom}
                               fill={color}
                               fillOpacity="0.8"
                             />
                             <circle
                               cx="0"
                               cy="0"
-                              r={getStrokeWidth(12)}
+                              r={12 / displayZoom}
                               fill="none"
                               stroke="#fff"
-                              strokeWidth={getStrokeWidth(2)}
+                              strokeWidth={2}
+                              vectorEffect="non-scaling-stroke"
                             />
                             <text
                               x="0"
-                              y={getStrokeWidth(4)}
+                              y={4 / displayZoom}
                               textAnchor="middle"
                               fill="white"
-                              fontSize={getStrokeWidth(12)}
+                              fontSize={12 / displayZoom}
                               fontWeight="bold"
                               fontFamily="sans-serif"
                             >
@@ -1272,10 +1353,11 @@ export function PdfMeasurementTab({
                             x={m.points[0].x}
                             y={m.points[0].y}
                             fill={color}
-                            fontSize={getStrokeWidth(18)}
+                            fontSize={18}
                             fontWeight="bold"
                             fontFamily="sans-serif"
                             style={{ textShadow: "2px 2px 0 #fff" }}
+                            transform={`translate(${m.points[0].x},${m.points[0].y}) scale(${1 / displayZoom}) translate(-${m.points[0].x},-${m.points[0].y})`}
                           >
                             {m.text}
                           </text>
@@ -1296,7 +1378,7 @@ export function PdfMeasurementTab({
                             fill={color}
                             fillOpacity={m.opacity ?? 0.15}
                             stroke={color}
-                            strokeWidth={getStrokeWidth(2)}
+                            strokeWidth={2} vectorEffect="non-scaling-stroke"
                           />
                         );
                       }
@@ -1313,24 +1395,27 @@ export function PdfMeasurementTab({
                               x2={m.points[1].x}
                               y2={m.points[1].y}
                               stroke={color}
-                              strokeWidth={getStrokeWidth(3)}
+                              strokeWidth={3}
+                              vectorEffect="non-scaling-stroke"
                               strokeLinecap="round"
                             />
                             <circle
                               cx={m.points[0].x}
                               cy={m.points[0].y}
-                              r={getStrokeWidth(4)}
+                              r={4 / displayZoom}
                               fill="#fff"
                               stroke={color}
-                              strokeWidth={getStrokeWidth(2)}
+                              strokeWidth={2}
+                              vectorEffect="non-scaling-stroke"
                             />
                             <circle
                               cx={m.points[1].x}
                               cy={m.points[1].y}
-                              r={getStrokeWidth(4)}
+                              r={4 / displayZoom}
                               fill="#fff"
                               stroke={color}
-                              strokeWidth={getStrokeWidth(2)}
+                              strokeWidth={2}
+                              vectorEffect="non-scaling-stroke"
                             />
                             {drawMeasurementLabel()}
                           </g>
@@ -1356,7 +1441,7 @@ export function PdfMeasurementTab({
                                 fill={color}
                                 fillOpacity={m.opacity ?? 0.3}
                                 stroke={color}
-                                strokeWidth={getStrokeWidth(2)}
+                                strokeWidth={2} vectorEffect="non-scaling-stroke"
                                 strokeLinejoin="round"
                               />
                               {drawMeasurementLabel()}
@@ -1372,9 +1457,9 @@ export function PdfMeasurementTab({
                               fill={color}
                               fillOpacity={(m.opacity ?? 0.3) * 0.5}
                               stroke={color}
-                              strokeWidth={getStrokeWidth(3)}
+                              strokeWidth={2} vectorEffect="non-scaling-stroke"
                               strokeLinejoin="round"
-                              strokeDasharray={`${getStrokeWidth(10)}, ${getStrokeWidth(5)}`}
+                              strokeDasharray={`${getInverseScale(10)}, ${getInverseScale(5)}`}
                             />
                           );
                         }
@@ -1384,7 +1469,7 @@ export function PdfMeasurementTab({
                               points={pointsStr}
                               fill="none"
                               stroke={color}
-                              strokeWidth={getStrokeWidth(3)}
+                              strokeWidth={2} vectorEffect="non-scaling-stroke"
                               strokeLinejoin="round"
                             />
                             {drawMeasurementLabel()}
@@ -1406,7 +1491,7 @@ export function PdfMeasurementTab({
                           fill="#2a5aff"
                           fillOpacity={0.15}
                           stroke="#2a5aff"
-                          strokeWidth={getStrokeWidth(2)}
+                          strokeWidth={2} vectorEffect="non-scaling-stroke"
                         />
                       ) : currentTool === "line" ||
                         currentTool === "distance" ||
@@ -1417,8 +1502,8 @@ export function PdfMeasurementTab({
                           x2={mousePos.x}
                           y2={mousePos.y}
                           stroke="#2a5aff"
-                          strokeWidth={getStrokeWidth(2)}
-                          strokeDasharray={`${getStrokeWidth(6)}, ${getStrokeWidth(4)}`}
+                          strokeWidth={2} vectorEffect="non-scaling-stroke"
+                          strokeDasharray={`${getInverseScale(6)}, ${getInverseScale(4)}`}
                         />
                       ) : currentTool !== "count" && currentTool !== "text" ? (
                         <polyline
@@ -1439,11 +1524,11 @@ export function PdfMeasurementTab({
                           }
                           fillOpacity={0.3}
                           stroke="#2a5aff"
-                          strokeWidth={getStrokeWidth(2)}
+                          strokeWidth={2} vectorEffect="non-scaling-stroke"
                           strokeDasharray={
                             isDrawingPencil
                               ? "none"
-                              : `${getStrokeWidth(6)}, ${getStrokeWidth(4)}`
+                              : `${getInverseScale(6)}, ${getInverseScale(4)}`
                           }
                           strokeLinejoin="round"
                         />
@@ -1455,10 +1540,10 @@ export function PdfMeasurementTab({
                             key={i}
                             cx={p.x}
                             cy={p.y}
-                            r={getStrokeWidth(5)}
+                            r={getInverseScale(5)}
                             fill="#fff"
                             stroke="#2a5aff"
-                            strokeWidth={getStrokeWidth(2)}
+                            strokeWidth={2} vectorEffect="non-scaling-stroke"
                           />
                         ))}
                       {/* Active floating indicator for the mouse position */}
@@ -1468,7 +1553,7 @@ export function PdfMeasurementTab({
                           <circle
                             cx={mousePos.x}
                             cy={mousePos.y}
-                            r={getStrokeWidth(5)}
+                            r={getInverseScale(5)}
                             fill="#2a5aff"
                             opacity="0.5"
                           />
@@ -1484,7 +1569,7 @@ export function PdfMeasurementTab({
                       <circle
                         cx={mousePos.x}
                         cy={mousePos.y}
-                        r={getStrokeWidth(5)}
+                        r={getInverseScale(5)}
                         fill="#2a5aff"
                         opacity="0.5"
                       />
@@ -1494,26 +1579,26 @@ export function PdfMeasurementTab({
                       <circle
                         cx={snappedPoint.x}
                         cy={snappedPoint.y}
-                        r={getStrokeWidth(8)}
+                        r={getInverseScale(8)}
                         fill="none"
                         stroke="#ff00ff"
-                        strokeWidth={getStrokeWidth(2)}
+                        strokeWidth={2} vectorEffect="non-scaling-stroke"
                       />
                       <line
-                        x1={snappedPoint.x - getStrokeWidth(12)}
+                        x1={snappedPoint.x - getInverseScale(12)}
                         y1={snappedPoint.y}
-                        x2={snappedPoint.x + getStrokeWidth(12)}
+                        x2={snappedPoint.x + getInverseScale(12)}
                         y2={snappedPoint.y}
                         stroke="#ff00ff"
-                        strokeWidth={getStrokeWidth(1.5)}
+                        strokeWidth={2} vectorEffect="non-scaling-stroke"
                       />
                       <line
                         x1={snappedPoint.x}
-                        y1={snappedPoint.y - getStrokeWidth(12)}
+                        y1={snappedPoint.y - getInverseScale(12)}
                         x2={snappedPoint.x}
-                        y2={snappedPoint.y + getStrokeWidth(12)}
+                        y2={snappedPoint.y + getInverseScale(12)}
                         stroke="#ff00ff"
-                        strokeWidth={getStrokeWidth(1.5)}
+                        strokeWidth={2} vectorEffect="non-scaling-stroke"
                       />
                     </g>
                   )}
@@ -1534,37 +1619,42 @@ export function PdfMeasurementTab({
                   </span>{" "}
                   Skala
                 </h3>
-                <div className="flex justify-between items-center bg-blue-50 text-blue-800 p-2 rounded-md border border-blue-100 mb-2">
-                  <span className="font-medium text-xs">Aktuell Skala</span>
+                <div className={`flex justify-between items-center p-2 rounded-md border mb-2 ${(() => {
+                  const currentScale = scaleForPage(pageScales, pageNum, presetScale(0));
+                  return currentScale.invalid ? "bg-red-50 text-red-800 border-red-200" : "bg-blue-50 text-blue-800 border-blue-100";
+                })()}`}>
+                  <span className="font-medium text-xs flex items-center gap-1">
+                    {(() => {
+                      const currentScale = scaleForPage(pageScales, pageNum, presetScale(0));
+                      return currentScale.invalid ? (
+                        <>
+                          <span className="material-symbols-outlined text-[14px]">warning</span>
+                          Okalibrerad
+                        </>
+                      ) : "Aktuell Skala";
+                    })()}
+                  </span>
                   <span className="font-mono font-bold text-xs">
-                    1px = {scale.toFixed(4)}m
+                    {(() => {
+                      const currentScale = scaleForPage(pageScales, pageNum, presetScale(0));
+                      if (currentScale.invalid) return "Kalibrera först";
+                      const ratio = ratioFromScale(currentScale);
+                      return `1:${Math.round(ratio)} (1px=${toRealDistance(1, currentScale.pixelsPerUnit).toFixed(4)}m)`;
+                    })()}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
-                  <button
-                    onClick={() => handleSetScale(0.1)}
-                    className="py-1 text-[10px] font-medium border border-gray-200 text-gray-600 rounded hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                  >
-                    1:10
-                  </button>
-                  <button
-                    onClick={() => handleSetScale(0.05)}
-                    className="py-1 text-[10px] font-medium border border-gray-200 text-gray-600 rounded hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                  >
-                    1:20
-                  </button>
-                  <button
-                    onClick={() => handleSetScale(0.04)}
-                    className="py-1 text-[10px] font-medium border border-gray-200 text-gray-600 rounded hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                  >
-                    1:25
-                  </button>
-                  <button
-                    onClick={() => handleSetScale(0.02)}
-                    className="py-1 text-[10px] font-medium border border-gray-200 text-gray-600 rounded hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                  >
-                    1:50
-                  </button>
+                  {[10, 20, 25, 50, 100, 200, 400, 500, 1000].map(
+                    (ratio) => (
+                      <button
+                        key={ratio}
+                        onClick={() => handleSetScale(presetScale(ratio))}
+                        className="py-1 text-[10px] font-medium border border-gray-200 text-gray-600 rounded hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                      >
+                        1:{ratio}
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
 
@@ -2171,6 +2261,97 @@ export function PdfMeasurementTab({
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 {dialogConfig.isAlert ? "OK" : "Bekräfta"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {calibrateDialog && calibrateDialog.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#00000080] backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">
+              Kalibrera Skala
+            </h3>
+            <p className="text-sm text-gray-600 mb-5">
+              Mata in den verkliga längden och välj enhet:
+            </p>
+
+            <div className="flex gap-2 mb-5">
+              <input
+                autoFocus
+                type="number"
+                value={calibrateDialog.length}
+                onChange={(e) =>
+                  setCalibrateDialog({
+                    ...calibrateDialog,
+                    length: e.target.value,
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder="T.ex. 10.5"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setCalibrateDialog(null);
+                    setCurrentPoints([]);
+                    handleToolSelect("select");
+                  }
+                }}
+              />
+              <select
+                value={calibrateDialog.unit}
+                onChange={(e) =>
+                  setCalibrateDialog({
+                    ...calibrateDialog,
+                    unit: e.target.value,
+                  })
+                }
+                className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+              >
+                <option value="m">m</option>
+                <option value="mm">mm</option>
+                <option value="cm">cm</option>
+                <option value="ft">ft</option>
+                <option value="in">in</option>
+              </select>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setCalibrateDialog(null);
+                  setCurrentPoints([]);
+                  handleToolSelect("select");
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Avbryt
+              </button>
+              <button
+                onClick={async () => {
+                  if (calibrateDialog.length) {
+                    const val = Number(calibrateDialog.length.replace(",", "."));
+                    const { toMeters } = await import("../pdf/scaleHelpers");
+                    const meters = toMeters(val, calibrateDialog.unit);
+                    const newScaleObj = deriveScale(calibrateDialog.pxDistance, meters);
+                    handleSetScale(newScaleObj);
+                    setDialogConfig({
+                      isOpen: true,
+                      isAlert: true,
+                      title: "Kalibrering slutförd",
+                      message: `Ritningen är kalibrerad!`,
+                      onConfirm: () => {
+                        setDialogConfig(null);
+                      },
+                    });
+                  }
+                  setCalibrateDialog(null);
+                  setCurrentPoints([]);
+                  handleToolSelect("select");
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Bekräfta
               </button>
             </div>
           </div>

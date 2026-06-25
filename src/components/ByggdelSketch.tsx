@@ -1,5 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildByggdelGeometry, ROLE_COLORS, GeoPart } from './byggdelGeometry';
+
 export const ByggdelSketch = ({ mType, dimensions }: { mType: string, dimensions?: any }) => {
   const [mode, setMode] = useState<'3d' | 'sketch'>('3d');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -31,165 +35,274 @@ export const ByggdelSketch = ({ mType, dimensions }: { mType: string, dimensions
         </div>
         
         <div className="p-4 flex-1 flex flex-col items-center justify-center relative bg-white overflow-hidden">
-          {mode === '3d' ? <ThreeDSketch mType={mType} dimensions={dimensions} /> : <CanvasSketch />}
+          {mode === '3d' ? <ByggdelViewer3D mType={mType} dimensions={dimensions} /> : <CanvasSketch />}
         </div>
       </div>
     </>
   );
 };
 
-const ThreeDSketch = ({ mType, dimensions = {} }: { mType: string, dimensions: any }) => {
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const svgRef = useRef<SVGSVGElement>(null);
+const ByggdelViewer3D = ({ mType, dimensions = {} }: { mType: string, dimensions: any }) => {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const [hoveredPart, setHoveredPart] = useState<{ part: GeoPart, point: THREE.Vector3 } | null>(null);
 
   useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      setZoom(z => Math.max(0.5, Math.min(10, z - e.deltaY * 0.005)));
-    };
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, []);
+    const currentMount = mountRef.current;
+    if (!currentMount) return;
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setIsDragging(true);
-  };
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (isDragging) {
-      setPan(p => ({ x: p.x + e.movementX / zoom, y: p.y + e.movementY / zoom }));
-    }
-  };
-  const handlePointerUp = () => setIsDragging(false);
+    // 1. Setup Scene, Camera, Renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf4f5f5);
 
-  // Isometric projection math
-  const l = Math.max(0.1, Number(dimensions.length) || 1);
-  const w = Math.max(0.1, Number(dimensions.width) || 1);
-  const h = Math.max(0.1, Number(dimensions.height) || 1);
-  
-  const maxDim = Math.max(l, w, h);
-  const scale = maxDim === 0 ? 1 : 40 / maxDim;
-  
-  const sl = l * scale;
-  const sw = w * scale;
-  const sh = h * scale;
-
-  const dx = Math.cos(Math.PI / 6);
-  const dy = Math.sin(Math.PI / 6);
-  
-  const iso = (x: number, y: number, z: number) => ({
-    x: (x - z) * dx,
-    y: (x + z) * dy - y
-  });
-
-  const poly = (...pts: {x: number, y: number}[]) => pts.map(p => `${p.x},${p.y}`).join(' ');
-
-  const DimText = ({ p1, p2, val, label, offset = 5 }: any) => {
-    if (val === undefined || val === null || val === '') return null;
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    // Determine offset direction perpendicular to line
-    const ox = offset * Math.cos(ang - Math.PI/2);
-    const oy = offset * Math.sin(ang - Math.PI/2);
+    const camera = new THREE.PerspectiveCamera(45, currentMount.clientWidth / currentMount.clientHeight, 0.1, 1000);
     
-    return (
-      <g>
-        <line x1={midX} y1={midY} x2={midX + ox} y2={midY + oy} stroke="#94a3b8" strokeWidth="0.5" strokeDasharray="1,1" />
-        <text x={midX + ox + (ox>0?1:-1)} y={midY + oy + (oy>0?1:-1)} fontSize="3" fill="#475569" textAnchor={ox>0?"start":"end"} dominantBaseline="middle" className="font-mono font-bold" style={{ textShadow: "0 0 2px white, 0 0 4px white" }}>
-          {label}: {val}
-        </text>
-      </g>
-    );
-  };
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    currentMount.appendChild(renderer.domElement);
 
-  const getSketchContent = () => {
-    // Generate base block
-    const p000 = iso(0, 0, 0);       // Back bottom
-    const pL00 = iso(sl, 0, 0);      // Right bottom
-    const p00W = iso(0, 0, sw);      // Left bottom
-    const pL0W = iso(sl, 0, sw);     // Front bottom
+    // 2. Add Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
     
-    const p0H0 = iso(0, sh, 0);      // Back top
-    const pLH0 = iso(sl, sh, 0);     // Right top
-    const p0HW = iso(0, sh, sw);     // Left top
-    const pLHW = iso(sl, sh, sw);    // Front top
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 10, 7.5);
+    scene.add(dirLight);
 
-    if (mType === '24.2_Sula') {
-      const shaftW = Math.max(0.1, Number(dimensions.shaftWidth) || w * 0.2) * scale;
-      const opL00 = iso(sl, sh, (sw - shaftW)/2);
-      const op00W = iso(0, sh, sw - (sw - shaftW)/2);
-      const opL0W = iso(sl, sh, sw - (sw - shaftW)/2);
-      
-      const pS00 = iso(sl, sh+20, (sw - shaftW)/2);
-      const pS0W = iso(0, sh+20, (sw - shaftW)/2);
-      const pSHW = iso(0, sh+20, sw - (sw - shaftW)/2);
-      const pSLW = iso(sl, sh+20, sw - (sw - shaftW)/2);
+    // 3. Add GridHelper
+    const gridHelper = new THREE.GridHelper(20, 20, 0x888888, 0xcccccc);
+    scene.add(gridHelper);
 
-      return (
-        <g>
-          {/* Base block */}
-          <polygon points={poly(p0H0, pLH0, pLHW, p0HW)} fill="#b3b7b9" /> {/* Top */}
-          <polygon points={poly(p00W, p0HW, pLHW, pL0W)} fill="#8B9194" /> {/* Left */}
-          <polygon points={poly(pL00, pLH0, pLHW, pL0W)} fill="#616668" /> {/* Right */}
-          
-          {/* Shaft block (fake height just to show representation) */}
-          <polygon points={poly(pS0W, pS00, pSLW, pSHW)} fill="#c8a47e" /> {/* formwork wood top */}
-          <polygon points={poly(op00W, pSHW, pSLW, opL0W)} fill="#b58d62" /> {/* wood left */}
-          <polygon points={poly(opL00, pS00, pSLW, opL0W)} fill="#9c7348" /> {/* wood right */}
-          
-          <DimText p1={pL0W} p2={pL00} val={dimensions.width} label="B" offset={-10} />
-          <DimText p1={p00W} p2={pL0W} val={dimensions.length} label="L" offset={10} />
-          <DimText p1={p0HW} p2={p00W} val={dimensions.height} label="H(sula)" offset={-8} />
-          <DimText p1={pS00} p2={pSLW} val={dimensions.shaftWidth} label="B(form)" offset={-5} />
-        </g>
-      );
+    // 4. Orbit Controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // 5. Build Geometry
+    const parts = buildByggdelGeometry(mType, dimensions);
+    const meshes: THREE.Mesh[] = [];
+    
+    // Group to hold all parts for easier bounds calculation
+    const group = new THREE.Group();
+    scene.add(group);
+
+    parts.forEach(part => {
+      let geometry;
+      if (part.kind === 'box') {
+        geometry = new THREE.BoxGeometry(part.size[0], part.size[1], part.size[2]);
+      } else if (part.kind === 'cylinder') {
+        geometry = new THREE.CylinderGeometry(part.size[0], part.size[1], part.size[2], 32);
+      } else {
+        geometry = new THREE.BoxGeometry(1, 1, 1);
+      }
+
+      const material = new THREE.MeshStandardMaterial({
+        color: ROLE_COLORS[part.role] || 0xcccccc,
+        transparent: part.role === 'fill',
+        opacity: part.role === 'fill' ? 0.35 : 1.0,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(part.position[0], part.position[1], part.position[2]);
+      mesh.userData = { part };
+      group.add(mesh);
+      meshes.push(mesh);
+
+      // Add Edges
+      const edges = new THREE.EdgesGeometry(geometry);
+      const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x333333, linewidth: 2 }));
+      mesh.add(line);
+    });
+
+    // 6. Camera Positioning
+    const box = new THREE.Box3().setFromObject(group);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    
+    const maxDim = Math.max(size.x, size.y, size.z, 1); // Avoid 0
+    // Set camera offset
+    const distance = maxDim * 1.8;
+    camera.position.set(center.x + distance, center.y + distance * 0.8, center.z + distance);
+    controls.target.set(center.x, center.y, center.z);
+    
+    // Fallback if the object is extremely small or zero
+    if (maxDim <= 0.1) {
+      camera.position.set(2, 2, 2);
+      controls.target.set(0, 0, 0);
     }
+    
+    controls.update();
 
-    return (
-      <g>
-        <polygon points={poly(p0H0, pLH0, pLHW, p0HW)} fill="#b3b7b9" />
-        <polygon points={poly(p00W, p0HW, pLHW, pL0W)} fill="#8B9194" />
-        <polygon points={poly(pL00, pLH0, pLHW, pL0W)} fill="#616668" />
+    // 7. Raycasting for Interaction
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onPointerDown = (event: PointerEvent) => {
+      const rect = currentMount.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(meshes, false);
+
+      if (intersects.length > 0) {
+        const object = intersects[0].object as THREE.Mesh;
+        const part = object.userData?.part as GeoPart | undefined;
         
-        <DimText p1={pL0W} p2={pL00} val={dimensions.width || dimensions.wallThickness} label="B/Tj" offset={-8} />
-        <DimText p1={p00W} p2={pL0W} val={dimensions.length} label="L" offset={8} />
-        <DimText p1={p0HW} p2={p00W} val={dimensions.height || dimensions.slabThickness} label="H/Tj" offset={-8} />
-      </g>
-    );
-  };
+        if (part) {
+          setHoveredPart({ part, point: intersects[0].point });
+        }
+        
+        // Highlight effect
+        meshes.forEach(m => {
+          if (m.material && 'emissive' in m.material) {
+            (m.material as THREE.MeshStandardMaterial).emissive.setHex(0x000000);
+          }
+        });
+        
+        if (object.material && 'emissive' in object.material) {
+          (object.material as THREE.MeshStandardMaterial).emissive.setHex(0x333333);
+        }
+      } else {
+        setHoveredPart(null);
+        meshes.forEach(m => {
+          if (m.material && 'emissive' in m.material) {
+            (m.material as THREE.MeshStandardMaterial).emissive.setHex(0x000000);
+          }
+        });
+      }
+    };
+    currentMount.addEventListener('pointerdown', onPointerDown);
+
+    // 8. Animation Loop
+    let animationFrameId: number;
+    
+    // Prepare HTML labels
+    const labelContainer = document.createElement('div');
+    labelContainer.style.position = 'absolute';
+    labelContainer.style.top = '0';
+    labelContainer.style.left = '0';
+    labelContainer.style.width = '100%';
+    labelContainer.style.height = '100%';
+    labelContainer.style.pointerEvents = 'none';
+    labelContainer.style.overflow = 'hidden';
+    currentMount.appendChild(labelContainer);
+
+    const labels: { el: HTMLElement; p1: THREE.Vector3; p2: THREE.Vector3 }[] = [];
+    parts.forEach(part => {
+      if (part.dims) {
+        part.dims.forEach(dim => {
+          const el = document.createElement('div');
+          el.className = 'absolute text-[10px] font-mono font-bold text-slate-700 bg-white/70 px-1 rounded';
+          el.style.transform = 'translate(-50%, -50%)';
+          el.innerText = `${dim.label}: ${dim.value}`;
+          labelContainer.appendChild(el);
+          
+          const p1 = new THREE.Vector3(dim.p1[0], dim.p1[1], dim.p1[2]);
+          const p2 = new THREE.Vector3(dim.p2[0], dim.p2[1], dim.p2[2]);
+          // Adjust for part position
+          p1.add(new THREE.Vector3(part.position[0], part.position[1], part.position[2]));
+          p2.add(new THREE.Vector3(part.position[0], part.position[1], part.position[2]));
+          
+          labels.push({ el, p1, p2 });
+        });
+      }
+    });
+
+    const tempV = new THREE.Vector3();
+
+    const animate = () => {
+      animationFrameId = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+      
+      // Update label positions
+      labels.forEach(({ el, p1, p2 }) => {
+        tempV.copy(p1).lerp(p2, 0.5); // mid point
+        tempV.project(camera);
+        
+        const x = (tempV.x * 0.5 + 0.5) * currentMount.clientWidth;
+        const y = (-(tempV.y * 0.5) + 0.5) * currentMount.clientHeight;
+        
+        // Hide if behind camera
+        if (tempV.z > 1.0) {
+          el.style.display = 'none';
+        } else {
+          el.style.display = 'block';
+          el.style.left = `${x}px`;
+          el.style.top = `${y}px`;
+        }
+      });
+    };
+    animate();
+
+    // 9. Resize Observer
+    let resizeTimer: number;
+    const resizeObserver = new ResizeObserver(entries => {
+      cancelAnimationFrame(resizeTimer);
+      resizeTimer = requestAnimationFrame(() => {
+        if (!entries || entries.length === 0) return;
+        const { width, height } = entries[0].contentRect;
+        if (width === 0 || height === 0) return;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height, false);
+      });
+    });
+    resizeObserver.observe(currentMount);
+
+    // Cleanup
+    return () => {
+      resizeObserver.disconnect();
+      cancelAnimationFrame(resizeTimer);
+      currentMount.removeEventListener('pointerdown', onPointerDown);
+      cancelAnimationFrame(animationFrameId);
+      controls.dispose();
+      renderer.dispose();
+      
+      meshes.forEach(mesh => {
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+      });
+      while(currentMount.firstChild) {
+        currentMount.removeChild(currentMount.firstChild);
+      }
+    };
+  }, [mType, dimensions]);
+
+  // Project 3D point to 2D for label
+  // We can just use a simple absolutely positioned div for the overlay
+  // But wait, the point moves when camera moves! We need to update the overlay position continuously.
+  // To keep it simple as requested ("litet överlägg"), we can just place it centered on screen or 
+  // track it in state, but tracking in state per frame is bad for performance.
+  // The simplest is an overlay in the corner when a part is selected.
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center relative touch-none select-none">
-      <div className="flex gap-2 absolute top-2 right-2 z-10">
-        <button onClick={() => setZoom(z => z + 0.2)} className="w-6 h-6 flex items-center justify-center bg-surface border border-outline-variant rounded shadow-sm hover:bg-surface-container-high">
-          <span className="material-symbols-outlined text-[14px]">add</span>
-        </button>
-        <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="w-6 h-6 flex items-center justify-center bg-surface border border-outline-variant rounded shadow-sm hover:bg-surface-container-high">
-          <span className="material-symbols-outlined text-[14px]">remove</span>
-        </button>
-        <button onClick={() => { setZoom(1); setPan({x:0, y:0}); }} className="w-6 h-6 flex items-center justify-center bg-surface border border-outline-variant rounded shadow-sm hover:bg-surface-container-high">
-          <span className="material-symbols-outlined text-[14px]">filter_center_focus</span>
-        </button>
-      </div>
-      <svg 
-        ref={svgRef}
-        viewBox="-50 -50 100 100" 
-        className="w-full h-full drop-shadow-md text-slate-600 stroke-current overflow-visible cursor-grab active:cursor-grabbing" 
-        strokeWidth="0.5" 
-        strokeLinejoin="round"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      >
-        <g transform={`scale(${zoom}) translate(${pan.x}, ${pan.y})`}>
-          {getSketchContent()}
-        </g>
-      </svg>
+    <div className="w-full h-full relative" ref={mountRef}>
+      {hoveredPart && (
+        <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm p-2 rounded shadow-md text-xs pointer-events-none border border-slate-200">
+          <div className="font-bold text-slate-800">{hoveredPart.part.label}</div>
+          {hoveredPart.part.size && (
+            <div className="text-slate-600 mt-1">
+              {hoveredPart.part.kind === 'box' ? (
+                <>L: {hoveredPart.part.size[0].toFixed(2)} | H: {hoveredPart.part.size[1].toFixed(2)} | B: {hoveredPart.part.size[2].toFixed(2)}</>
+              ) : (
+                <>R: {hoveredPart.part.size[0].toFixed(2)} | H: {hoveredPart.part.size[2].toFixed(2)}</>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Fallback dimensions display when nothing is hovered, similar to old DimText */}
+      {!hoveredPart && Object.keys(dimensions).length > 0 && (
+        <div className="absolute bottom-2 left-2 bg-white/80 p-2 rounded shadow-sm text-xs pointer-events-none flex gap-3 text-slate-600">
+           {dimensions.length && <span>L: {dimensions.length}</span>}
+           {dimensions.width && <span>B: {dimensions.width}</span>}
+           {dimensions.height && <span>H: {dimensions.height}</span>}
+           {dimensions.thickness && <span>Tj: {dimensions.thickness}</span>}
+        </div>
+      )}
     </div>
   );
 };

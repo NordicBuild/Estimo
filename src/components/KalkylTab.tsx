@@ -1,6 +1,7 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useMemo } from 'react';
 import { Byggdel, Material, INITIAL_TIDSFAKTORER } from '../data';
 import { CalculationResult } from '../useCalculation';
+import { computeByggdelCo2 } from '../climate/co2';
 
 interface Props {
   byggdelar: Byggdel[];
@@ -78,6 +79,14 @@ export function KalkylTab({ byggdelar, calcResult, materials, toggleByggdel, tog
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [bulkEditForm, setBulkEditForm] = useState({ vMatP: '', vArbP: '', timeFactor: '' });
   
+  const materialsMap = useMemo(() => {
+    const map = new Map<string, Material>();
+    for (const m of materials) {
+      map.set(m.name, m);
+    }
+    return map;
+  }, [materials]);
+
   const uniqueTypes = Array.from(new Set(parts.map(p => p.type)));
   const filteredParts = filterType ? parts.filter(p => p.type === filterType) : parts;
 
@@ -222,6 +231,7 @@ export function KalkylTab({ byggdelar, calcResult, materials, toggleByggdel, tog
               }
               
               const groupTotal = groupParts.reduce((s, p) => p.active ? s + p.costNetto : s, 0);
+              const groupCo2Total = groupParts.reduce((s, p) => p.active ? s + computeByggdelCo2(p as Byggdel, materialsMap) : s, 0);
               const groupCheckedCount = groupParts.filter(p => checkedIds.includes(p.id)).length;
               const isGroupAllChecked = groupCheckedCount === groupParts.length && groupParts.length > 0;
               const isGroupIndeterminate = groupCheckedCount > 0 && groupCheckedCount < groupParts.length;
@@ -245,7 +255,10 @@ export function KalkylTab({ byggdelar, calcResult, materials, toggleByggdel, tog
                        <button className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-blue-600 rounded" title="Duplicera hela mappen" onClick={(e) => { e.stopPropagation(); cloneType(groupKey); }}>
                          <i className="fa-solid fa-copy text-[11px]"></i>
                        </button>
-                       <span className="text-[#64748b] font-mono text-[11px] whitespace-nowrap">{formatKr(groupTotal)}</span>
+                       <span className="text-[#64748b] font-mono text-[11px] whitespace-nowrap" title="Kostnad">{formatKr(groupTotal)}</span>
+                       {groupCo2Total > 0 && (
+                         <span className="text-green-700 font-mono text-[10px] whitespace-nowrap font-semibold" title="Klimatpåverkan (kg CO2e)">{groupCo2Total.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} kg</span>
+                       )}
                     </div>
                   </div>
                   
@@ -318,7 +331,8 @@ export function KalkylTab({ byggdelar, calcResult, materials, toggleByggdel, tog
                                 />
                              </div>
                              <span className="w-6 text-[10px] text-gray-500 text-left">{p.unit}</span>
-                             <span className={`w-20 text-right font-mono ${isSelected ? 'text-[#1e3a8a] font-bold' : 'text-[#64748b]'}`}>{inact ? '-' : formatKr(p.costNetto)}</span>
+                             <span className={`w-16 text-right font-mono ${isSelected ? 'text-[#1e3a8a] font-bold' : 'text-[#64748b]'}`} title="Kostnad">{inact ? '-' : formatKr(p.costNetto)}</span>
+                             <span className={`w-16 text-right font-mono text-[10px] text-green-700 font-semibold`} title="Klimatpåverkan (kg CO2e)">{inact ? '-' : computeByggdelCo2(p as Byggdel, materialsMap).toLocaleString('sv-SE', { maximumFractionDigits: 0 }) + ' kg'}</span>
                              
                              <div className="flex gap-1 ml-3 opacity-100 lg:opacity-0 group-hover/item:opacity-100 transition-opacity bg-transparent pl-1 rounded border border-transparent">
                                 <button className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-blue-600 rounded hover:bg-[#e2e8f0] transition-colors" title="Duplicera byggdel" onClick={(e) => { e.stopPropagation(); clonePart(p.id); }}>
