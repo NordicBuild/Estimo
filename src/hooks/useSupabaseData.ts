@@ -360,14 +360,16 @@ export function useSupabaseData(
     };
     setByggdelTemplates(prev => [...prev, newTpl]);
     if (dbReady && dataSpaceId) {
-      await supabase.from('byggdel_templates').insert(newTpl).catch(() => {});
+      const { error } = await supabase.from('byggdel_templates').insert(newTpl);
+      if (error) console.error(error);
     }
   };
 
   const deleteTemplate = async (id: number) => {
     setByggdelTemplates(prev => prev.filter(t => t.id !== id));
     if (dbReady && dataSpaceId) {
-      await supabase.from('byggdel_templates').delete().eq('id', id).catch(() => {});
+      const { error } = await supabase.from('byggdel_templates').delete().eq('id', id);
+      if (error) console.error(error);
     }
   };
 

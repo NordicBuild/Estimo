@@ -14,7 +14,7 @@ import { SlutsidaTab } from "./components/SlutsidaTab";
 import { HemsidaTab } from "./components/HemsidaTab";
 import { AdminTab } from "./components/AdminTab";
 import { PdfMeasurementTab } from "./components/PdfMeasurementTab";
-import { BimMeasurementTab } from "./components/BimMeasurementTab";
+import { BIMMeasurementTab } from "./components/BIMMeasurementTab";
 import { ByggdelModal } from "./components/ByggdelModal";
 import { Header } from "./components/Header";
 import { useDialog } from './hooks/useDialog';
@@ -625,7 +625,7 @@ export default function App() {
         'Gruppering': p.group || '',
         'Typ / Material': p.type,
         'Mängd': p.qty,
-        'Enhet': pResult?.unit || p.unit || 'st',
+        'Enhet': pResult?.unit || 'st',
         'Timmar': pResult?.tim || 0,
         'Materialkostnad (kr)': Math.round((pResult?.costNetto || 0) - (pResult?.tim || 0) * settings.tRate),
         'Arbetskostnad (kr)': Math.round((pResult?.tim || 0) * settings.tRate),
@@ -635,7 +635,7 @@ export default function App() {
         let mIdx = 0;
         p.moments.forEach(m => {
           if (m.active !== false) {
-             const mRes = pResult?.momentResults?.[mIdx];
+             const mRes = pResult?.moments?.[mIdx];
              partRows.push({
                'Kategori': '  - Moment',
                'Namn / Etikett': m.label,
@@ -643,10 +643,10 @@ export default function App() {
                'Typ / Material': m.material,
                'Mängd': m.amount,
                'Enhet': m.matUnit || '',
-               'Timmar': Math.round((m.hrs || 0) * 10) / 10,
-               'Materialkostnad (kr)': Math.round((mRes?.materialCost || 0)),
-               'Arbetskostnad (kr)': Math.round((m.hrs || 0) * settings.tRate),
-               'Totalt Pris (kr)': Math.round((mRes?.materialCost || 0) + (m.hrs || 0) * settings.tRate)
+               'Timmar': Math.round((mRes?.hrs || 0) * 10) / 10,
+               'Materialkostnad (kr)': Math.round((mRes?.matNetto || 0)),
+               'Arbetskostnad (kr)': Math.round((mRes?.arbNetto || 0)),
+               'Totalt Pris (kr)': Math.round((mRes?.cost || 0))
              });
           }
           mIdx++;
@@ -671,16 +671,16 @@ export default function App() {
     const summaryRows = [
       { 'Beskrivning': 'Totalt Materialkostnad', 'Belopp (kr)': Math.round(calcResult.totMat) },
       { 'Beskrivning': 'Totalt Arbetskostnad', 'Belopp (kr)': Math.round(calcResult.totArb) },
-      { 'Beskrivning': 'Summa UE-kostnad', 'Belopp (kr)': Math.round(calcResult.totUe || 0) },
+      { 'Beskrivning': 'Summa UE-kostnad', 'Belopp (kr)': 0 },
       { 'Beskrivning': 'Gemensamma Omkostnader', 'Belopp (kr)': Math.round(calcResult.omkTot) },
       { 'Beskrivning': 'Summa Netto Produktionskostnad', 'Belopp (kr)': Math.round(calcResult.projNetto) },
-      { 'Beskrivning': 'Vinst/Risk Arbete', 'Belopp (kr)': Math.round(calcResult.vArb) },
-      { 'Beskrivning': 'Vinst/Risk Material', 'Belopp (kr)': Math.round(calcResult.vMat) },
-      { 'Beskrivning': 'Vinst/Risk UE', 'Belopp (kr)': Math.round(calcResult.vUe || 0) },
+      { 'Beskrivning': 'Vinst/Risk Arbete', 'Belopp (kr)': Math.round(calcResult.vArbKr || 0) },
+      { 'Beskrivning': 'Vinst/Risk Material', 'Belopp (kr)': Math.round(calcResult.vMatKr || 0) },
+      { 'Beskrivning': 'Vinst/Risk UE', 'Belopp (kr)': 0 },
       { 'Beskrivning': 'Vinst/Risk Totalt', 'Belopp (kr)': Math.round(calcResult.vTot) },
       { 'Beskrivning': 'Anbud (exkl moms)', 'Belopp (kr)': Math.round(calcResult.anbud) },
-      { 'Beskrivning': 'Moms', 'Belopp (kr)': Math.round(calcResult.moms) },
-      { 'Beskrivning': 'Anbud (inkl moms)', 'Belopp (kr)': Math.round(calcResult.anbudInklMoms) }
+      { 'Beskrivning': 'Moms', 'Belopp (kr)': Math.round(calcResult.anbud * 0.25) },
+      { 'Beskrivning': 'Anbud (inkl moms)', 'Belopp (kr)': Math.round(calcResult.anbud * 1.25) }
     ];
 
     // 5. Kundanbud
@@ -707,17 +707,17 @@ export default function App() {
        }
 
        if (priceStr) {
-          clientOfferRows.push({ 'Rubrik': p.name, 'Information': `${p.qty} ${partCalc?.unit || p.unit || 'st'}`, 'Pris': priceStr });
+          clientOfferRows.push({ 'Rubrik': p.name, 'Information': `${p.qty} ${partCalc?.unit || 'st'}`, 'Pris': priceStr });
        } else {
-          clientOfferRows.push({ 'Rubrik': p.name, 'Information': `${p.qty} ${partCalc?.unit || p.unit || 'st'}` });
+          clientOfferRows.push({ 'Rubrik': p.name, 'Information': `${p.qty} ${partCalc?.unit || 'st'}` });
        }
     });
 
     clientOfferRows.push(
       { 'Rubrik': '' },
       { 'Rubrik': 'Pris exkl. moms', 'Information': `${Math.round(calcResult.anbud).toLocaleString('sv-SE')} kr` },
-      { 'Rubrik': 'Moms', 'Information': `${Math.round(calcResult.moms).toLocaleString('sv-SE')} kr` },
-      { 'Rubrik': 'Pris inkl. moms', 'Information': `${Math.round(calcResult.anbudInklMoms).toLocaleString('sv-SE')} kr` },
+      { 'Rubrik': 'Moms', 'Information': `${Math.round(calcResult.anbud * 0.25).toLocaleString('sv-SE')} kr` },
+      { 'Rubrik': 'Pris inkl. moms', 'Information': `${Math.round(calcResult.anbud * 1.25).toLocaleString('sv-SE')} kr` },
     );
 
     const wb = XLSX.utils.book_new();
@@ -938,14 +938,14 @@ export default function App() {
     });
   };
 
-  const addIfcByggdelar = (newParts: Omit<Byggdel, 'id'>[]) => {
+  const addMeasurementParts = (newParts: Omit<Byggdel, 'id'>[]) => {
     setByggdelar(prev => {
       const highestId = Math.max(0, ...prev.map(b => b.id));
       const partsWithIds = newParts.map((part, index) => ({
         ...part,
         id: highestId + 1 + index,
       }));
-      showNotification(`Lade till ${partsWithIds.length} element från IFC.`, 'success');
+      showNotification(`Lade till ${partsWithIds.length} element från mätning.`, 'success');
       return [...prev, ...partsWithIds];
     });
   };
@@ -1439,10 +1439,10 @@ export default function App() {
           />
         )}
         {activeTab === 'pdf' && (
-          <PdfMeasurementTab addParts={addIfcByggdelar} />
+          <PdfMeasurementTab addParts={addMeasurementParts} />
         )}
         {activeTab === 'bim' && (
-          <BimMeasurementTab addParts={addIfcByggdelar} />
+          <BIMMeasurementTab addParts={addMeasurementParts} />
         )}
         {activeTab === 'material' && (
           <MaterialTab 
@@ -1480,10 +1480,10 @@ export default function App() {
         {activeTab === 'sammanstalln' && <SammanstallnTab calcResult={calcResult} materials={materials} updateMaterial={updateMaterial} projectInfo={projectInfo} setProjectInfo={setProjectInfo} companyInfo={companyInfo} />}
         {activeTab === 'planering' && <PlaneringTab calcResult={calcResult} byggdelar={byggdelar} reorderByggdelar={reorderByggdelar} reorderMoment={reorderMoment} updateStartDay={updateStartDay} updatePlanDates={updatePlanDates} updateMomentWorkers={updateMomentWorkers} updateByggdelColor={updateByggdelColor} />}
         {activeTab === 'slutsida' && <SlutsidaTab settings={settings} setSettings={setSettings} calcResult={calcResult} />}
-        {activeTab === 'anbud' && <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} updateByggdelOfferPrice={updateByggdelOfferPrice} />}
+        {activeTab === 'anbud' && <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} materials={materials} updateByggdelOfferPrice={updateByggdelOfferPrice} />}
         {activeTab !== 'anbud' && (
           <div style={{ position: 'absolute', top: '-10000px', left: 0, width: '1000px', zIndex: -1000, pointerEvents: 'none' }}>
-            <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} updateByggdelOfferPrice={updateByggdelOfferPrice} />
+            <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} materials={materials} updateByggdelOfferPrice={updateByggdelOfferPrice} />
           </div>
         )}
         {activeTab === 'dokument_ffu' && (

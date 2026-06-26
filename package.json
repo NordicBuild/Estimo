@@ -9,7 +9,6 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "postinstall": "node -e \"require('fs').mkdirSync('public/wasm', { recursive: true })\" && copyfiles -f node_modules/web-ifc/*.wasm public/ && copyfiles -f node_modules/web-ifc/*.wasm public/wasm/ && copyfiles -f node_modules/web-ifc/*.js public/ && copyfiles -f node_modules/web-ifc/*.js public/wasm/",
     "test": "vitest run"
   },
   "dependencies": {
@@ -27,15 +26,16 @@
     "tailwind-merge": "^3.6.0",
     "three": "0.175.0",
     "vite": "^6.2.3",
-    "web-ifc": "0.0.66",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.1",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@types/three": "^0.135.0",
     "autoprefixer": "^10.4.21",
-    "copyfiles": "^2.4.1",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",

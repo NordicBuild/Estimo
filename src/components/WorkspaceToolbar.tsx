@@ -69,6 +69,13 @@ interface KalkylSubNavProps {
   setActiveTab: (val: any) => void;
 }
 
+interface WorkspaceNavProps {
+  activeTab: string;
+  setActiveTab: (val: any) => void;
+  sidebarOpen?: boolean;
+  setSidebarOpen?: (val: boolean) => void;
+}
+
 export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: WorkspaceNavProps) {
   const kalkylTabs = ['kalkyl', 'material', 'arbete', 'analys', 'sammanstalln', 'slutsida', 'planering', 'anbud'];
   const isKalkylActive = kalkylTabs.includes(activeTab);
@@ -128,7 +135,7 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
               { id: 'dokument_modell', label: 'Modell', icon: 'architecture' },
               { id: 'dokument_kommunikation', label: 'Kommunikation', icon: 'forum' },
               { id: 'pdf', label: 'PDF-Mätningar', icon: 'picture_as_pdf' },
-              { id: 'bim', label: 'BIM 3D Mätning', icon: 'view_in_ar' },
+              { id: 'bim', label: 'BIM-Mätning', icon: 'view_in_ar' },
             ];
           }
           

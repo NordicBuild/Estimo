@@ -1,6 +1,6 @@
 import React from 'react';
 import { CalculationResult } from '../useCalculation';
-import { Byggdel, ProjectInfo, CompanyInfo, INITIAL_TIDSFAKTORER } from '../data';
+import { Byggdel, ProjectInfo, CompanyInfo, Material, INITIAL_TIDSFAKTORER } from '../data';
 import { exportPdf, exportExcel } from '../exportUtils';
 
 interface Props {
@@ -8,10 +8,11 @@ interface Props {
   byggdelar: Byggdel[];
   projectInfo: ProjectInfo;
   companyInfo: CompanyInfo;
+  materials: Material[];
   updateByggdelOfferPrice?: (id: number, show: boolean) => void;
 }
 
-export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, updateByggdelOfferPrice }: Props) {
+export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, materials, updateByggdelOfferPrice }: Props) {
   const formatKr = (v: number) => Math.round(v).toLocaleString('sv-SE') + ' kr';
 
   const activeByggdelar = byggdelar.filter(b => b.active !== false);
@@ -21,7 +22,7 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, upda
   };
 
   const handleExportExcel = () => {
-    exportExcel(byggdelar, calcResult, projectInfo, companyInfo);
+    exportExcel(byggdelar, calcResult, projectInfo, companyInfo, materials);
   };
 
   return (

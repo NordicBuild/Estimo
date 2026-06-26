@@ -190,7 +190,7 @@ export function MomentGrid({ part, materials, updateMoment, duplicateMoment, upd
         errors.push('Material hittas inte i databasen.');
       } else {
         if (!mat.price || mat.price === 0) errors.push('Saknat pris för valt material.');
-        if (!mat.co2 || mat.co2 === 0) errors.push('Saknad CO2-faktor för valt material.');
+        if (!mat.co2PerUnit || mat.co2PerUnit === 0) errors.push('Saknad CO2-faktor för valt material.');
       }
     }
     return errors;
@@ -228,7 +228,7 @@ export function MomentGrid({ part, materials, updateMoment, duplicateMoment, upd
               
               const mat = materialsMap.get(m.material);
               const spill = mat ? (1 + (mat.spill || 0) / 100) : 1;
-              const rowCo2 = mat && mat.co2 ? (m.amount || 0) * bQty * mat.co2 * spill : 0;
+              const rowCo2 = mat && mat.co2PerUnit ? (m.amount || 0) * bQty * mat.co2PerUnit * spill : 0;
               const rowCost = m.cost || 0; // Pre-calculated from useCalculation
 
               sumCost += rowCost;

@@ -314,7 +314,7 @@ export function PdfMeasurementTab({
       viewport: renderViewport,
     };
     
-    const renderTask = page.render(renderContext);
+    const renderTask = page.render(renderContext as any);
     renderTaskRef.current = renderTask;
 
     try {
@@ -1475,8 +1475,7 @@ export function PdfMeasurementTab({
                           }
                           fill={
                             currentTool === "area" ||
-                            currentTool === "volume" ||
-                            currentTool === "rectangle"
+                            currentTool === "volume"
                               ? "#2a5aff"
                               : "none"
                           }

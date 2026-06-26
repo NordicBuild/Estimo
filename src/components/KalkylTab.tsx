@@ -92,7 +92,7 @@ export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, compa
 
   const handleExportExcel = () => {
     if (projectInfo && companyInfo) {
-      exportExcel(byggdelar, calcResult, projectInfo, companyInfo);
+      exportExcel(byggdelar, calcResult, projectInfo, companyInfo, materials);
     }
   };
 

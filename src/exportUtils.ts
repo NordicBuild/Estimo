@@ -1,11 +1,13 @@
-import { Byggdel, ProjectInfo, CompanyInfo } from './data';
+import { Byggdel, ProjectInfo, CompanyInfo, Material } from './data';
 import { CalculationResult } from './useCalculation';
+import { computeByggdelCo2 } from './climate/co2';
 
 export async function exportExcel(
   byggdelar: Byggdel[],
   calcResult: CalculationResult,
   projectInfo: ProjectInfo,
-  companyInfo: CompanyInfo
+  companyInfo: CompanyInfo,
+  materials: Material[]
 ) {
   const module = await import('xlsx');
   const XLSX = module.default || module;
@@ -47,8 +49,8 @@ export async function exportExcel(
     groups[type].push(b);
   });
 
-  // Calculate CO2 map
-  const co2Map = calcResult.co2.parts;
+  const materialsMap = new Map<string, Material>();
+  materials.forEach(m => materialsMap.set(m.name, m));
 
   for (const [type, parts] of Object.entries(groups)) {
     let groupCost = 0;
@@ -62,16 +64,16 @@ export async function exportExcel(
       if (!pRes) continue;
       
       const qty = (p.qty || 1) * (p.antal || 1);
-      const co2 = co2Map[p.id] || 0;
+      const co2 = computeByggdelCo2(p, materialsMap);
       
-      const matPerUnit = qty > 0 ? (pRes.costNetto - pRes.tim * calcResult.hourlyRate) / qty : 0;
-      const arbPerUnit = qty > 0 ? (pRes.tim * calcResult.hourlyRate) / qty : 0;
+      const matPerUnit = qty > 0 ? pRes.matNetto / qty : 0;
+      const arbPerUnit = qty > 0 ? pRes.arbNetto / qty : 0;
       
       rows.push([
         p.name,
         p.type,
         qty,
-        p.unit || '',
+        pRes.unit || '',
         Math.round(matPerUnit),
         Math.round(arbPerUnit),
         Math.round(pRes.costNetto),
@@ -123,7 +125,7 @@ export async function exportPdf(elementId: string, filename: string) {
   if (!element) return;
   
   const module = await import('html2pdf.js');
-  const html2pdf = module.default || module;
+  const html2pdf = (module as any).default || module;
 
   const opt = {
     margin:       10,
