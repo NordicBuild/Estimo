@@ -309,9 +309,9 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
               <tr>
                 <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem]">Material</th>
                 <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem]">Kategori</th>
-                <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem] text-right">Mängd</th>
-                <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem] text-right">Netto Pris/enh</th>
-                <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem] text-right">Total Kostnad</th>
+                <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem] num">Mängd</th>
+                <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem] num">Netto Pris/enh</th>
+                <th className="p-3 font-semibold uppercase tracking-wider text-[0.7rem] num">Total Kostnad</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
@@ -324,17 +324,17 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
                     <tr key={idx} className="hover:bg-gray-50 transition-colors">
                       <td className="p-3 text-[var(--text)] font-semibold">{m.name}</td>
                       <td className="p-3 text-[var(--text2)] text-xs">{m.cat}</td>
-                      <td className="p-3 text-right font-mono text-[var(--text2)] font-medium">
+                      <td className="p-3 num text-[var(--text2)] font-medium">
                         {formatN(m.qty)} <span className="text-[0.65rem] uppercase text-[var(--text3)]">{m.unit}</span>
                       </td>
-                      <td className="p-3 text-right">
+                      <td className="p-3 num">
                         {isEditing ? (
                           <div className="flex justify-end items-center gap-1">
                             <input 
                               type="number" 
                               step="any"
                               min="0"
-                              className="w-20 border border-[var(--border)] rounded px-2 py-1 text-right text-xs focus:border-[var(--blue)] outline-none"
+                              className="w-20 border border-[var(--border)] rounded px-2 py-1 num text-xs focus:border-[var(--blue)] outline-none"
                               value={editingPrice.price}
                               onChange={e => setEditingPrice({ ...editingPrice, price: parseFloat(e.target.value) || 0 })}
                               onKeyDown={e => e.key === 'Enter' && handlePriceSave(m.name)}
@@ -349,7 +349,7 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
                           </div>
                         ) : (
                           <div className="flex justify-end items-center gap-2 group">
-                            <div className="font-mono text-[var(--text)]">
+                            <div className="text-[var(--text)]">
                               {formatKr(currentPrice)}
                             </div>
                             <button 
@@ -362,7 +362,7 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
                           </div>
                         )}
                       </td>
-                      <td className="p-3 text-right font-mono font-bold text-[var(--text)]">{formatKr(m.costNetto)}</td>
+                      <td className="p-3 num font-bold text-[var(--text)]">{formatKr(m.costNetto)}</td>
                     </tr>
                   );
                 })

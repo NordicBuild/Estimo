@@ -12,7 +12,7 @@ export type CalculationResult = {
     matNetto: number; 
     arbNetto: number; 
     unit: string;
-    moments: (Byggdel['moments'][0] & { hrs?: number; cost?: number; matUnit?: string })[];
+    moments: (Byggdel['moments'][0] & { hrs?: number; cost?: number; matNetto?: number; arbNetto?: number; matUnit?: string })[];
   })[];
   materialsSummary: { name: string; cat: string; qty: number; unit: string; costNetto: number; previousPrice?: number }[];
   momentsSummary: { label: string; hours: number; costNetto: number }[];
@@ -71,7 +71,8 @@ export function computeCalculation(
       const tid = m.timeUnit || 0;
       const spill = 1 + (mat.spill || 0) / 100;
       
-      const netMat = qty * mat.price * spill;
+      const price = m.unitPrice ?? mat.price;
+      const netMat = qty * price * spill;
       // Apply timeFactor and objFactor here
       const hrs = qty * tid * tf.faktor * currentTF * (b.objFactor || 1.0);
       const netArb = hrs * tRate;
@@ -104,7 +105,7 @@ export function computeCalculation(
         momData.cost += netArb;
       }
 
-      return { ...m, hrs, cost: netArb + netMat, matUnit: mat.unit };
+      return { ...m, hrs, cost: netArb + netMat, matNetto: netMat, arbNetto: netArb, matUnit: mat.unit };
     });
 
     const bCost = bMat + bArb;

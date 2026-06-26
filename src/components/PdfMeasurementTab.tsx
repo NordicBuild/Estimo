@@ -8,22 +8,7 @@ import { Scale, deriveScale, toRealDistance, toRealArea, presetScale, ratioFromS
 // Use CDN for worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-type Point = { x: number; y: number };
-type Measurement = {
-  id: string;
-  tool: string;
-  name?: string;
-  byggdelType?: string;
-  height?: number;
-  multiplier?: number;
-  points: Point[];
-  color: string;
-  value?: number; // Calculated length or area based on tool
-  page: number;
-  text?: string;
-  depth?: number; // For volumes
-  opacity?: number;
-};
+import { Measurement, MeasurementGroup, Point } from "../measurementTypes";
 
 export function PdfMeasurementTab({
   addParts,
@@ -49,7 +34,12 @@ export function PdfMeasurementTab({
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [showScaleWarning, setShowScaleWarning] = useState(false);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [measurementGroups, setMeasurementGroups] = useState<MeasurementGroup[]>([
+    { id: 'default', name: 'Standard', color: '#ef4444', visible: true }
+  ]);
+  const [activeGroupId, setActiveGroupId] = useState<string>('default');
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
+  const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null); // For live readout
   const [dialogConfig, setDialogConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -490,9 +480,12 @@ export function PdfMeasurementTab({
       y = snapped.point.y;
     }
 
+    const getActiveGroupColor = () => measurementGroups.find(g => g.id === activeGroupId)?.color || "#ef4444";
+
     if (currentTool === "count") {
       const newMeasurement: Measurement = {
         id: Date.now().toString(),
+        groupId: activeGroupId,
         tool: currentTool,
         name: activeMeasurementName || undefined,
         byggdelType: activeMeasurementType,
@@ -502,7 +495,7 @@ export function PdfMeasurementTab({
             : undefined,
         multiplier: activeMeasurementMultiplier,
         points: [{ x, y }],
-        color: "#ff2a2a",
+        color: getActiveGroupColor(),
         value: 1,
         page: pageNum,
       };
@@ -522,6 +515,7 @@ export function PdfMeasurementTab({
               ...prev,
               {
                 id: Date.now().toString(),
+                groupId: activeGroupId,
                 tool: currentTool,
                 name: activeMeasurementName || undefined,
                 byggdelType: activeMeasurementType,
@@ -531,7 +525,7 @@ export function PdfMeasurementTab({
                     : undefined,
                 multiplier: activeMeasurementMultiplier,
                 points: [{ x, y }],
-                color: "#ff2a2a",
+                color: getActiveGroupColor(),
                 text: t,
                 page: pageNum,
               },
@@ -592,8 +586,10 @@ export function PdfMeasurementTab({
           );
         }
 
+        const getActiveGroupColor = () => measurementGroups.find(g => g.id === activeGroupId)?.color || "#ef4444";
         const newMeasurement: Measurement = {
           id: Date.now().toString(),
+          groupId: activeGroupId,
           tool: currentTool,
           name: activeMeasurementName || undefined,
           byggdelType: activeMeasurementType,
@@ -603,7 +599,7 @@ export function PdfMeasurementTab({
               : undefined,
           multiplier: activeMeasurementMultiplier,
           points: [p1, p2],
-          color: "#2a5aff",
+          color: getActiveGroupColor(),
           value: val,
           page: pageNum,
         };
@@ -653,8 +649,10 @@ export function PdfMeasurementTab({
     e.currentTarget.releasePointerCapture(e.pointerId);
     if (currentTool === "pencil" && isDrawingPencil) {
       setIsDrawingPencil(false);
+      const getActiveGroupColor = () => measurementGroups.find(g => g.id === activeGroupId)?.color || "#ef4444";
       const newMeasurement: Measurement = {
         id: Date.now().toString(),
+        groupId: activeGroupId,
         tool: currentTool,
         name: activeMeasurementName || undefined,
         byggdelType: activeMeasurementType,
@@ -664,7 +662,7 @@ export function PdfMeasurementTab({
             : undefined,
         multiplier: activeMeasurementMultiplier,
         points: [...currentPoints],
-        color: "#ff2a2a",
+        color: getActiveGroupColor(),
         page: pageNum,
       };
       setMeasurements([...measurements, newMeasurement]);
@@ -682,8 +680,10 @@ export function PdfMeasurementTab({
       const currentScaleObj = scaleForPage(pageScales, pageNum, presetScale(0));
 
       const finishMeasurement = (finalValue: number, finalDepth: number) => {
+        const getActiveGroupColor = () => measurementGroups.find(g => g.id === activeGroupId)?.color || "#ef4444";
         const newMeasurement: Measurement = {
           id: Date.now().toString(),
+          groupId: activeGroupId,
           tool: currentTool,
           name: activeMeasurementName || undefined,
           byggdelType: activeMeasurementType,
@@ -693,7 +693,7 @@ export function PdfMeasurementTab({
               : undefined,
           multiplier: activeMeasurementMultiplier,
           points: [...currentPoints],
-          color: "#2a5aff",
+          color: getActiveGroupColor(),
           opacity:
             currentTool === "area" ||
             currentTool === "volume" ||
@@ -1247,6 +1247,17 @@ export function PdfMeasurementTab({
                     .filter((m) => m.page === pageNum)
                     .map((m) => {
                       const color = m.color;
+                      const isSelected = selectedMeasurementId === m.id;
+                      const selectProps = {
+                        onClick: (e: React.MouseEvent) => {
+                          if (currentTool === "select") {
+                            e.stopPropagation();
+                            setSelectedMeasurementId(m.id);
+                            setActiveGroupId(m.groupId || "default");
+                          }
+                        },
+                        cursor: currentTool === "select" ? "pointer" : "default"
+                      };
 
                       // Draw labels for measurements
                       const drawMeasurementLabel = () => {
@@ -1310,173 +1321,120 @@ export function PdfMeasurementTab({
                         );
                       };
 
-                      if (m.tool === "count") {
-                        return (
-                          <g
-                            key={m.id}
-                            transform={`translate(${m.points[0].x},${m.points[0].y})`}
-                          >
-                            <circle
-                              cx="0"
-                              cy="0"
-                              r={12 / displayZoom}
-                              fill={color}
-                              fillOpacity="0.8"
-                            />
-                            <circle
-                              cx="0"
-                              cy="0"
-                              r={12 / displayZoom}
-                              fill="none"
-                              stroke="#fff"
-                              strokeWidth={2}
-                              vectorEffect="non-scaling-stroke"
-                            />
+                      const renderShape = () => {
+                        if (m.tool === "count") {
+                          return (
+                            <g transform={`translate(${m.points[0].x},${m.points[0].y})`}>
+                              <circle cx="0" cy="0" r={12 / displayZoom} fill={color} fillOpacity="0.8" />
+                              <circle cx="0" cy="0" r={12 / displayZoom} fill="none" stroke={isSelected ? "#fff" : "#fff"} strokeWidth={isSelected ? 4 : 2} vectorEffect="non-scaling-stroke" />
+                              <text x="0" y={4 / displayZoom} textAnchor="middle" fill="white" fontSize={12 / displayZoom} fontWeight="bold" fontFamily="sans-serif">1</text>
+                            </g>
+                          );
+                        }
+                        if (m.tool === "text") {
+                          return (
                             <text
-                              x="0"
-                              y={4 / displayZoom}
-                              textAnchor="middle"
-                              fill="white"
-                              fontSize={12 / displayZoom}
+                              x={m.points[0].x}
+                              y={m.points[0].y}
+                              fill={color}
+                              fontSize={18}
                               fontWeight="bold"
                               fontFamily="sans-serif"
+                              style={{ textShadow: "2px 2px 0 #fff", outline: isSelected ? "2px solid blue" : "none" }}
+                              transform={`translate(${m.points[0].x},${m.points[0].y}) scale(${1 / displayZoom}) translate(-${m.points[0].x},-${m.points[0].y})`}
                             >
-                              1
+                              {m.text}
                             </text>
-                          </g>
-                        );
-                      }
-                      if (m.tool === "text") {
-                        return (
-                          <text
-                            key={m.id}
-                            x={m.points[0].x}
-                            y={m.points[0].y}
-                            fill={color}
-                            fontSize={18}
-                            fontWeight="bold"
-                            fontFamily="sans-serif"
-                            style={{ textShadow: "2px 2px 0 #fff" }}
-                            transform={`translate(${m.points[0].x},${m.points[0].y}) scale(${1 / displayZoom}) translate(-${m.points[0].x},-${m.points[0].y})`}
-                          >
-                            {m.text}
-                          </text>
-                        );
-                      }
-                      if (m.tool === "rectangle") {
-                        const x = Math.min(m.points[0].x, m.points[1].x);
-                        const y = Math.min(m.points[0].y, m.points[1].y);
-                        const w = Math.abs(m.points[1].x - m.points[0].x);
-                        const h = Math.abs(m.points[1].y - m.points[0].y);
-                        return (
-                          <rect
-                            key={m.id}
-                            x={x}
-                            y={y}
-                            width={w}
-                            height={h}
-                            fill={color}
-                            fillOpacity={m.opacity ?? 0.15}
-                            stroke={color}
-                            strokeWidth={2} vectorEffect="non-scaling-stroke"
-                          />
-                        );
-                      }
-                      if (
-                        m.tool === "line" ||
-                        m.tool === "distance" ||
-                        m.tool === "calibrate"
-                      ) {
-                        return (
-                          <g key={m.id}>
-                            <line
-                              x1={m.points[0].x}
-                              y1={m.points[0].y}
-                              x2={m.points[1].x}
-                              y2={m.points[1].y}
-                              stroke={color}
-                              strokeWidth={3}
-                              vectorEffect="non-scaling-stroke"
-                              strokeLinecap="round"
-                            />
-                            <circle
-                              cx={m.points[0].x}
-                              cy={m.points[0].y}
-                              r={4 / displayZoom}
-                              fill="#fff"
-                              stroke={color}
-                              strokeWidth={2}
-                              vectorEffect="non-scaling-stroke"
-                            />
-                            <circle
-                              cx={m.points[1].x}
-                              cy={m.points[1].y}
-                              r={4 / displayZoom}
-                              fill="#fff"
-                              stroke={color}
-                              strokeWidth={2}
-                              vectorEffect="non-scaling-stroke"
-                            />
-                            {drawMeasurementLabel()}
-                          </g>
-                        );
-                      }
-                      if (
-                        [
-                          "polyline",
-                          "area",
-                          "volume",
-                          "cloud",
-                          "pencil",
-                        ].includes(m.tool)
-                      ) {
-                        const pointsStr = m.points
-                          .map((p) => `${p.x},${p.y}`)
-                          .join(" ");
-                        if (m.tool === "area" || m.tool === "volume") {
+                          );
+                        }
+                        if (m.tool === "rectangle") {
+                          const x = Math.min(m.points[0].x, m.points[1].x);
+                          const y = Math.min(m.points[0].y, m.points[1].y);
+                          const w = Math.abs(m.points[1].x - m.points[0].x);
+                          const h = Math.abs(m.points[1].y - m.points[0].y);
                           return (
-                            <g key={m.id}>
+                            <rect
+                              x={x}
+                              y={y}
+                              width={w}
+                              height={h}
+                              fill={color}
+                              fillOpacity={m.opacity ?? 0.15}
+                              stroke={isSelected ? "#3b82f6" : color}
+                              strokeWidth={isSelected ? 4 : 2} vectorEffect="non-scaling-stroke"
+                            />
+                          );
+                        }
+                        if (m.tool === "line" || m.tool === "distance" || m.tool === "calibrate") {
+                          return (
+                            <g>
+                              <line
+                                x1={m.points[0].x}
+                                y1={m.points[0].y}
+                                x2={m.points[1].x}
+                                y2={m.points[1].y}
+                                stroke={isSelected ? "#3b82f6" : color}
+                                strokeWidth={isSelected ? 5 : 3}
+                                vectorEffect="non-scaling-stroke"
+                                strokeLinecap="round"
+                              />
+                              <circle cx={m.points[0].x} cy={m.points[0].y} r={4 / displayZoom} fill="#fff" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                              <circle cx={m.points[1].x} cy={m.points[1].y} r={4 / displayZoom} fill="#fff" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                              {drawMeasurementLabel()}
+                            </g>
+                          );
+                        }
+                        if (["polyline", "area", "volume", "cloud", "pencil"].includes(m.tool)) {
+                          const pointsStr = m.points.map((p) => `${p.x},${p.y}`).join(" ");
+                          if (m.tool === "area" || m.tool === "volume") {
+                            return (
+                              <g>
+                                <polygon
+                                  points={pointsStr}
+                                  fill={color}
+                                  fillOpacity={m.opacity ?? 0.3}
+                                  stroke={isSelected ? "#3b82f6" : color}
+                                  strokeWidth={isSelected ? 4 : 2} vectorEffect="non-scaling-stroke"
+                                  strokeLinejoin="round"
+                                />
+                                {drawMeasurementLabel()}
+                              </g>
+                            );
+                          }
+                          if (m.tool === "cloud") {
+                            return (
                               <polygon
                                 points={pointsStr}
                                 fill={color}
-                                fillOpacity={m.opacity ?? 0.3}
-                                stroke={color}
-                                strokeWidth={2} vectorEffect="non-scaling-stroke"
+                                fillOpacity={(m.opacity ?? 0.3) * 0.5}
+                                stroke={isSelected ? "#3b82f6" : color}
+                                strokeWidth={isSelected ? 4 : 2} vectorEffect="non-scaling-stroke"
+                                strokeLinejoin="round"
+                                strokeDasharray={`${getInverseScale(10)}, ${getInverseScale(5)}`}
+                              />
+                            );
+                          }
+                          return (
+                            <g>
+                              <polyline
+                                points={pointsStr}
+                                fill="none"
+                                stroke={isSelected ? "#3b82f6" : color}
+                                strokeWidth={isSelected ? 4 : 2} vectorEffect="non-scaling-stroke"
                                 strokeLinejoin="round"
                               />
                               {drawMeasurementLabel()}
                             </g>
                           );
                         }
-                        if (m.tool === "cloud") {
-                          // Drawing a simplified cloud as a polygon for now
-                          return (
-                            <polygon
-                              key={m.id}
-                              points={pointsStr}
-                              fill={color}
-                              fillOpacity={(m.opacity ?? 0.3) * 0.5}
-                              stroke={color}
-                              strokeWidth={2} vectorEffect="non-scaling-stroke"
-                              strokeLinejoin="round"
-                              strokeDasharray={`${getInverseScale(10)}, ${getInverseScale(5)}`}
-                            />
-                          );
-                        }
-                        return (
-                          <g key={m.id}>
-                            <polyline
-                              points={pointsStr}
-                              fill="none"
-                              stroke={color}
-                              strokeWidth={2} vectorEffect="non-scaling-stroke"
-                              strokeLinejoin="round"
-                            />
-                            {drawMeasurementLabel()}
-                          </g>
-                        );
-                      }
-                      return null;
+                        return null;
+                      };
+
+                      return (
+                        <g key={m.id} {...selectProps} className={isSelected ? "drop-shadow-md" : ""}>
+                          {renderShape()}
+                        </g>
+                      );
                     })}
 
                   {/* Draw current active drawing points */}
@@ -1535,17 +1493,68 @@ export function PdfMeasurementTab({
                       ) : null}
 
                       {!isDrawingPencil &&
-                        currentPoints.map((p, i) => (
-                          <circle
-                            key={i}
-                            cx={p.x}
-                            cy={p.y}
-                            r={getInverseScale(5)}
-                            fill="#fff"
-                            stroke="#2a5aff"
-                            strokeWidth={2} vectorEffect="non-scaling-stroke"
-                          />
-                        ))}
+                        currentPoints.length > 0 &&
+                        ["line", "distance", "rectangle", "area", "volume", "calibrate", "polyline"].includes(currentTool) && (
+                          <g>
+                            <polyline
+                              points={[...currentPoints, mousePos]
+                                .map((p) => (p ? `${p.x},${p.y}` : ""))
+                                .join(" ")}
+                              fill={["area", "volume", "rectangle"].includes(currentTool) ? (measurementGroups.find(g => g.id === activeGroupId)?.color || "#ef4444") : "none"}
+                              fillOpacity={0.15}
+                              stroke={measurementGroups.find(g => g.id === activeGroupId)?.color || "#ef4444"}
+                              strokeWidth={3}
+                              strokeDasharray={`${getInverseScale(5)}, ${getInverseScale(5)}`}
+                              vectorEffect="non-scaling-stroke"
+                            />
+                            {currentPoints.map((p, i) => (
+                              <circle
+                                key={i}
+                                cx={p.x}
+                                cy={p.y}
+                                r={getInverseScale(5)}
+                                fill="#fff"
+                                stroke={measurementGroups.find(g => g.id === activeGroupId)?.color || "#ef4444"}
+                                strokeWidth={2} vectorEffect="non-scaling-stroke"
+                              />
+                            ))}
+                            {/* Live readout */}
+                            {mousePos && currentPoints.length > 0 && (() => {
+                              const currentScaleObj = scaleForPage(pageScales, pageNum, presetScale(0));
+                              let liveValue = 0;
+                              let unit = "m";
+                              
+                              if (currentTool === "distance" || currentTool === "line" || currentTool === "calibrate" || currentTool === "polyline") {
+                                const lastP = currentPoints[currentPoints.length - 1];
+                                const pxDistance = Math.sqrt(Math.pow(mousePos.x - lastP.x, 2) + Math.pow(mousePos.y - lastP.y, 2));
+                                liveValue = toRealDistance(pxDistance, currentScaleObj.pixelsPerUnit);
+                              } else if (currentTool === "rectangle") {
+                                const p1 = currentPoints[0];
+                                liveValue = toRealArea(Math.abs(mousePos.x - p1.x) * Math.abs(mousePos.y - p1.y), currentScaleObj.pixelsPerUnit);
+                                unit = "m²";
+                              } else if (currentTool === "area" || currentTool === "volume") {
+                                const allPts = [...currentPoints, mousePos];
+                                let area = 0;
+                                for (let i = 0; i < allPts.length; i++) {
+                                  const j = (i + 1) % allPts.length;
+                                  area += allPts[i].x * allPts[j].y;
+                                  area -= allPts[j].x * allPts[i].y;
+                                }
+                                liveValue = toRealArea(Math.abs(area / 2), currentScaleObj.pixelsPerUnit);
+                                unit = currentTool === "volume" ? "m³" : "m²"; // volume is shown as area until depth is provided
+                              }
+                              
+                              return (
+                                <g transform={`translate(${mousePos.x + getInverseScale(15)}, ${mousePos.y - getInverseScale(15)})`}>
+                                  <rect x="0" y={-getInverseScale(20)} width={getInverseScale(80)} height={getInverseScale(24)} rx={getInverseScale(4)} fill="#1f2937" fillOpacity="0.8" />
+                                  <text x={getInverseScale(40)} y={-getInverseScale(4)} fill="white" fontSize={getInverseScale(12)} textAnchor="middle" fontWeight="bold">
+                                    {liveValue.toFixed(2)} {unit}
+                                  </text>
+                                </g>
+                              );
+                            })()}
+                          </g>
+                        )}
                       {/* Active floating indicator for the mouse position */}
                       {!isDrawingPencil &&
                         currentTool !== "count" &&
@@ -1663,16 +1672,48 @@ export function PdfMeasurementTab({
                   <span className="material-symbols-outlined text-[16px]">
                     folder_copy
                   </span>{" "}
-                  Lager
+                  Mätgrupper
                 </h3>
-                <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-md border border-gray-200">
-                  <div className="w-3 h-3 rounded shadow-sm bg-[#2a5aff]"></div>
-                  <select className="flex-1 w-full text-xs font-medium bg-transparent border-none focus:ring-0 text-gray-700 cursor-pointer p-0">
-                    <option>Standard (Alla mängder)</option>
-                    <option>VVS</option>
-                    <option>Elinstallation</option>
-                    <option>Konstruktion</option>
+                <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-md border border-gray-200 mb-2">
+                  <div className="w-3 h-3 rounded shadow-sm" style={{ backgroundColor: measurementGroups.find(g => g.id === activeGroupId)?.color || '#ccc' }}></div>
+                  <select
+                    className="flex-1 w-full text-xs font-medium bg-transparent border-none focus:ring-0 text-gray-700 cursor-pointer p-0"
+                    value={activeGroupId}
+                    onChange={(e) => setActiveGroupId(e.target.value)}
+                  >
+                    {measurementGroups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
                   </select>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className="flex-1 text-xs py-1 border border-gray-300 rounded hover:bg-gray-100"
+                    onClick={() => {
+                      setDialogConfig({
+                        isOpen: true,
+                        title: "Ny mätgrupp",
+                        message: "Ange namn för ny mätgrupp:",
+                        defaultValue: "",
+                        onConfirm: (name) => {
+                          if (name) {
+                            const newGroup: MeasurementGroup = {
+                              id: Date.now().toString(),
+                              name,
+                              color: `#${Math.floor(Math.random()*16777215).toString(16)}`,
+                              visible: true
+                            };
+                            setMeasurementGroups([...measurementGroups, newGroup]);
+                            setActiveGroupId(newGroup.id);
+                          }
+                          setDialogConfig(null);
+                        },
+                        onCancel: () => setDialogConfig(null)
+                      });
+                    }}
+                  >
+                    + Ny Grupp
+                  </button>
                 </div>
               </div>
 
@@ -1712,158 +1753,64 @@ export function PdfMeasurementTab({
                     verktyg i verktygsfältet för att börja.
                   </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {Object.values(
-                      measurements
-                        .filter((m) => m.page === pageNum)
-                        .reduce(
-                          (acc, m) => {
-                            const name =
-                              m.name ||
-                              (m.tool === "distance" || m.tool === "line"
-                                ? "Avstånd " + m.id.substring(m.id.length - 4)
-                                : m.tool === "area"
-                                  ? "Yta " + m.id.substring(m.id.length - 4)
-                                  : m.tool === "volume"
-                                    ? "Volym " + m.id.substring(m.id.length - 4)
-                                    : m.tool === "count"
-                                      ? "Antal " +
-                                        m.id.substring(m.id.length - 4)
-                                      : m.tool === "text"
-                                        ? "Notering " +
-                                          m.id.substring(m.id.length - 4)
-                                        : `Mätning (${m.tool})`);
-                            const key = m.tool + "|" + name;
-                            if (!acc[key]) {
-                              acc[key] = {
-                                name,
-                                tool: m.tool,
-                                total: 0,
-                                items: [],
-                              };
-                            }
-                            acc[key].items.push(m);
-                            acc[key].total +=
-                              (m.tool === "count" ? 1 : m.value || 0) *
-                              (m.multiplier || 1);
-                            return acc;
-                          },
-                          {} as Record<
-                            string,
-                            {
-                              name: string;
-                              tool: string;
-                              total: number;
-                              items: Measurement[];
-                            }
-                          >,
-                        ),
-                    ).map((group) => (
-                      <li
-                        key={group.name + group.tool}
-                        className="text-sm bg-white p-3 rounded-lg flex flex-col gap-2 border border-gray-200 shadow-sm"
-                      >
-                        <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={`w-6 h-6 rounded flex items-center justify-center ${group.tool === "count" ? "bg-red-100 text-red-600" : "bg-blue-50 text-blue-600"}`}
-                            >
-                              <span className="material-symbols-outlined text-[16px]">
-                                {group.tool === "area"
-                                  ? "pentagon"
-                                  : group.tool === "volume"
-                                    ? "view_in_ar"
-                                    : group.tool === "distance"
-                                      ? "vertical_align_center"
-                                      : group.tool === "count"
-                                        ? "tag"
-                                        : group.tool === "text"
-                                          ? "title"
-                                          : "timeline"}
-                              </span>
+                  <ul className="space-y-4">
+                    {measurementGroups.map((group) => {
+                      const groupMeasurements = measurements.filter((m) => m.page === pageNum && (m.groupId === group.id || (!m.groupId && group.id === 'default')));
+                      if (groupMeasurements.length === 0) return null;
+
+                      // Summarize totals per tool in this group
+                      const summary = groupMeasurements.reduce((acc, m) => {
+                        const unit = m.tool === "area" ? "m²" : m.tool === "volume" ? "m³" : m.tool === "count" ? "st" : m.tool === "text" ? "" : "m";
+                        const key = m.tool;
+                        if (!acc[key]) acc[key] = { tool: m.tool, total: 0, unit, items: [] };
+                        acc[key].items.push(m);
+                        acc[key].total += (m.tool === "count" ? 1 : m.value || 0) * (m.multiplier || 1);
+                        return acc;
+                      }, {} as Record<string, { tool: string; total: number; unit: string; items: Measurement[] }>);
+
+                      return (
+                        <li key={group.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                          <div className="bg-gray-50 p-2 border-b border-gray-200 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-sm shadow-sm" style={{ backgroundColor: group.color }}></div>
+                              <span className="font-bold text-sm text-gray-800">{group.name}</span>
                             </div>
-                            <span className="font-semibold text-gray-800">
-                              {group.name}
-                            </span>
+                            <span className="text-xs text-gray-500 font-medium">{groupMeasurements.length} objekt</span>
                           </div>
-                          {group.tool !== "text" && (
-                            <div className="text-sm font-bold text-gray-900 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
-                              {group.tool === "count"
-                                ? group.total
-                                : group.total.toFixed(2)}
-                              <span className="text-gray-500 font-medium ml-1 text-xs">
-                                {group.tool === "area"
-                                  ? "m²"
-                                  : group.tool === "volume"
-                                    ? "m³"
-                                    : group.tool === "count"
-                                      ? "st"
-                                      : "m"}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <ul className="space-y-1">
-                          {group.items.map((m) => (
-                            <li
-                              key={m.id}
-                              onClick={() => {
-                                setSelectedMeasurementId(m.id);
-                                setActiveSidebarTab("properties");
-                              }}
-                              className={`flex justify-between items-center p-1.5 rounded cursor-pointer transition-colors ${selectedMeasurementId === m.id ? "bg-blue-50 ring-1 ring-blue-400" : "hover:bg-gray-50"}`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-2 h-2 rounded-full"
-                                  style={{
-                                    backgroundColor: m.color,
-                                    opacity: m.opacity ?? 1,
-                                  }}
-                                ></div>
-                                <span className="text-xs text-gray-500 font-medium">
-                                  #{m.id.substring(m.id.length - 4)}
-                                </span>
+                          <div className="p-2 space-y-3">
+                            {Object.values(summary).map(sum => (
+                              <div key={sum.tool} className="space-y-1">
+                                <div className="flex justify-between items-center text-xs font-semibold text-gray-600 uppercase mb-1">
+                                  <span>{sum.tool === 'count' ? 'Antal' : sum.tool === 'area' ? 'Yta' : sum.tool === 'volume' ? 'Volym' : sum.tool === 'text' ? 'Noteringar' : 'Längd'}</span>
+                                  {sum.tool !== 'text' && <span className="text-gray-900 bg-gray-100 px-1.5 py-0.5 rounded">{sum.total.toFixed(2)} {sum.unit}</span>}
+                                </div>
+                                <ul className="space-y-1 pl-1 border-l-2 border-gray-100 ml-1">
+                                  {sum.items.map(m => (
+                                    <li
+                                      key={m.id}
+                                      onClick={() => {
+                                        setSelectedMeasurementId(m.id);
+                                        setActiveSidebarTab("properties");
+                                      }}
+                                      className={`flex justify-between items-center p-1.5 rounded cursor-pointer transition-colors ${selectedMeasurementId === m.id ? "bg-blue-50 ring-1 ring-blue-400" : "hover:bg-gray-50"}`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500 font-medium">#{m.id.substring(m.id.length - 4)}</span>
+                                        <span className="text-xs text-gray-700 truncate max-w-[80px]">{m.name || m.text || ''}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {m.multiplier && m.multiplier > 1 && <span className="text-[10px] text-gray-400 font-medium px-1 bg-gray-100 rounded">x{m.multiplier}</span>}
+                                        {m.tool !== 'text' && <span className="text-xs font-medium text-gray-700">{(m.value || (m.tool==='count'?1:0)).toFixed(2)} {sum.unit}</span>}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
                               </div>
-                              <div className="flex items-center gap-3">
-                                {m.multiplier && m.multiplier > 1 && (
-                                  <span className="text-xs text-gray-400 font-medium px-1 bg-gray-100 rounded">
-                                    {m.multiplier}x
-                                  </span>
-                                )}
-                                {m.value !== undefined &&
-                                  m.tool !== "text" &&
-                                  m.tool !== "count" && (
-                                    <span className="text-xs text-gray-600 font-medium">
-                                      {(m.value * (m.multiplier || 1)).toFixed(
-                                        2,
-                                      )}
-                                    </span>
-                                  )}
-                                {m.tool === "text" && (
-                                  <span className="text-xs text-gray-600 font-medium truncate max-w-[80px]">
-                                    {m.text}
-                                  </span>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setMeasurements(
-                                      measurements.filter((x) => x.id !== m.id),
-                                    );
-                                  }}
-                                  className="text-gray-400 hover:text-red-500 transition-colors p-0.5 rounded hover:bg-red-50 flex items-center justify-center"
-                                >
-                                  <span className="material-symbols-outlined text-[14px]">
-                                    close
-                                  </span>
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </li>
-                    ))}
+                            ))}
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </>

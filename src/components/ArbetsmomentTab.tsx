@@ -217,7 +217,7 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
         type="number" 
         step="0.001" 
         min="0"
-        className="w-16 text-right font-mono font-bold text-blue-600 bg-transparent border border-transparent rounded px-1 py-0.5 text-xs hover:border-gray-300 focus:border-blue-500 outline-none transition-colors"
+        className="w-16 num font-bold text-blue-600 bg-transparent border border-transparent rounded px-1 py-0.5 text-xs hover:border-gray-300 focus:border-blue-500 outline-none transition-colors"
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={() => {
@@ -374,7 +374,7 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
                     <input 
                       type="number" 
                       step="0.001" 
-                      className="w-full border border-[var(--border)] rounded px-2 py-1 text-sm text-right"
+                      className="w-full border border-[var(--border)] rounded px-2 py-1 text-sm num"
                       value={formState.tid}
                       onChange={e => setFormState({...formState, tid: parseFloat(e.target.value) || 0})}
                     />
@@ -542,11 +542,11 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
                     />
                   </th>
                   <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Kategori</th>
-                  <th className="p-2 w-[35%] max-w-[250px] text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Moment</th>
-                  <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">tim/enh</th>
+                  <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Moment</th>
+                  <th className="p-2 num text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">tim/enh</th>
                   <th className="p-2 text-center text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Enhet</th>
                   <th className="p-2 text-center text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Svårighet</th>
-                  <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Effektiv tim/enh</th>
+                  <th className="p-2 num text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Effektiv tim/enh</th>
                   <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Notering</th>
                   <th className="p-2 w-24"></th>
                 </tr>
@@ -578,7 +578,7 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
                         </td>
                         <td className="p-2"><span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-md text-[var(--text2)]" style={{background: bg}}>{a.cat}</span></td>
                         <td className="p-2 font-semibold text-sm w-[35%] max-w-[250px] whitespace-normal break-words leading-tight">{a.name}</td>
-                        <td className="p-2 text-right">
+                        <td className="p-2 num">
                           <TidInput 
                             initialValue={a.tid ?? 0}
                             onChange={(newTid) => updateArbete(actualIndex, { tid: newTid })}
@@ -586,7 +586,7 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
                         </td>
                         <td className="p-2 text-center"><span className="text-[0.6rem] font-extrabold uppercase tracking-wide bg-[var(--blue-lt)] text-[var(--blue)] px-2 py-0.5 rounded-md">{a.unit}</span></td>
                         <td className="p-2 text-center" style={{color: svColor}}><span className="text-[0.68rem] font-bold">{SV_LABELS[svKey] || svKey}</span></td>
-                        <td className="p-2 text-right font-mono font-bold text-[var(--purple)]">{effTid}</td>
+                        <td className="p-2 num font-bold text-[var(--purple)]">{effTid}</td>
                         <td className="p-2 text-[0.75rem] text-[var(--text3)]">{a.note}</td>
                         <td className="p-2">
                           <div className="flex gap-1 justify-end transition-opacity">

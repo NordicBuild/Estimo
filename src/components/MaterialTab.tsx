@@ -4,6 +4,7 @@ import { Material, DEFAULT_MATERIAL } from '../data';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { EXAMPLE_CO2_FACTORS } from '../climate/co2';
 import { OpenLcaClient, Ref, CalcSetup } from '../climate/openLcaClient';
+import { Button, IconButton, Input, Select, Modal, Badge, Toolbar, Table, Thead, Tbody, Tr, Th, Td } from '../ui';
 
 interface Props {
   materials: Material[];
@@ -211,7 +212,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           type="number" 
           step="any"
           min="0"
-          className="w-14 text-right font-mono border border-[var(--blue)] rounded px-1 py-0.5 text-xs outline-none"
+          className="w-14 num border border-[var(--blue)] rounded px-1 py-0.5 text-xs outline-none"
           value={val}
           onChange={e => setVal(e.target.value)}
           onBlur={handleBlur}
@@ -223,7 +224,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
     return (
       <span 
         onClick={() => setIsEditing(true)} 
-        className="w-14 inline-block text-right font-mono bg-transparent border border-transparent rounded px-1 py-0.5 text-xs hover:border-gray-300 outline-none cursor-pointer"
+        className="w-14 inline-block num bg-transparent border border-transparent rounded px-1 py-0.5 text-xs hover:border-gray-300 outline-none cursor-pointer"
       >
         {mat.spill ?? 0}
       </span>
@@ -263,7 +264,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           type="number" 
           step="any"
           min="0"
-          className="w-20 text-right font-mono font-bold text-blue-600 bg-white border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-500 outline-none transition-colors"
+          className="w-20 num font-bold text-blue-600 bg-white border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-500 outline-none transition-colors"
           value={val}
           onChange={e => setVal(e.target.value)}
           onBlur={handleBlur}
@@ -279,7 +280,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
     return (
       <span 
         onClick={() => { setIsEditing(true); setVal(mat.price?.toString() ?? '0'); }}
-        className="cursor-pointer text-blue-600 border border-transparent hover:border-gray-300 px-1 py-0.5 rounded transition-colors inline-block min-w-[3rem] font-bold font-mono text-right text-xs"
+        className="cursor-pointer text-blue-600 border border-transparent hover:border-gray-300 px-1 py-0.5 rounded transition-colors inline-block min-w-[3rem] font-bold num text-xs"
         title="Klicka för att redigera"
       >
         {mat.price ?? 0}
@@ -313,7 +314,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           type="number" 
           step="any"
           min="0"
-          className="w-16 text-right font-mono text-[var(--text2)] bg-white border border-gray-300 rounded px-1 py-0.5 text-[0.65rem] focus:border-green-500 outline-none transition-colors"
+          className="w-16 num text-[var(--text2)] bg-white border border-gray-300 rounded px-1 py-0.5 text-[0.65rem] focus:border-green-500 outline-none transition-colors"
           value={val}
           onChange={e => setVal(e.target.value)}
           onBlur={handleBlur}
@@ -327,7 +328,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
     return (
       <span 
         onClick={() => { setIsEditing(true); setVal(mat.co2PerUnit?.toString() ?? '0'); }}
-        className="cursor-pointer text-gray-600 border border-transparent hover:border-gray-300 px-1 py-0.5 rounded transition-colors inline-block min-w-[2.5rem] font-mono text-right text-[0.65rem]"
+        className="cursor-pointer text-gray-600 border border-transparent hover:border-gray-300 px-1 py-0.5 rounded transition-colors inline-block min-w-[2.5rem] num text-[0.65rem]"
         title="Klicka för att redigera CO2-faktor"
       >
         {mat.co2PerUnit ?? 0}
@@ -447,15 +448,14 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
     <div className="w-full px-4 sm:px-6 md:px-8 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row gap-4 mb-4 justify-between">
         <div className="flex flex-col sm:flex-row gap-4">
-          <input 
-            type="text" 
+          <Input 
             placeholder="Sök material..." 
-            className="border border-[var(--border)] rounded px-3 py-2 w-full sm:w-64 outline-none focus:border-[var(--blue)]"
+            className="w-full sm:w-64"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <select 
-            className="border border-[var(--border)] rounded px-3 py-2 w-full sm:w-64 outline-none focus:border-[var(--blue)]"
+          <Select 
+            className="w-full sm:w-64"
             value={filterCat}
             onChange={e => setFilterCat(e.target.value)}
           >
@@ -463,9 +463,9 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
             {categories.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
-          </select>
+          </Select>
         </div>
-        <div className="flex gap-2 flex-wrap justify-end">
+        <Toolbar className="justify-end w-full">
           <input 
             type="file" 
             accept=".xlsx, .xls" 
@@ -474,29 +474,31 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
             className="hidden" 
             id="excel-import" 
           />
-          <button 
+          <Button 
             onClick={downloadTemplate}
-            className="px-3 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border border-[var(--border)] text-[var(--text2)] hover:bg-gray-50 flex items-center gap-2"
+            variant="ghost"
             title="Ladda ner Excel-mall"
+            icon="download"
           >
-            <i className="fa-solid fa-download"></i> Mall
-          </button>
+            Mall
+          </Button>
           <label 
             htmlFor="excel-import"
-            className="px-3 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border border-[var(--border)] text-[var(--text2)] hover:bg-gray-50 cursor-pointer flex items-center gap-2"
+            className="px-3 py-1.5 rounded text-sm font-medium transition-colors whitespace-nowrap border border-[var(--color-outline-variant)] text-[var(--color-on-surface-variant)] hover:bg-[var(--color-surface-container-highest)] cursor-pointer flex items-center gap-2 h-8"
             title="Importera från Excel"
           >
-            <i className="fa-solid fa-file-excel text-green-600"></i> Importera
+            <i className="material-symbols-outlined text-green-600 text-[18px] leading-none">table</i> Importera
           </label>
-          <button 
+          <Button 
             onClick={handleFillExampleCO2}
-            className="px-3 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border border-[var(--border)] text-green-700 bg-green-50 hover:bg-green-100 flex items-center gap-2"
+            className="text-green-700 bg-green-50 hover:bg-green-100 border-green-200"
             title="Fyll automatiskt i standard CO2-värden för kända material (ersätt med riktiga EPD-/Boverket-värden innan inlämning!)"
+            icon="eco"
           >
-            <i className="fa-solid fa-leaf text-green-600"></i> Fyll i exempelvärden
-          </button>
+            Fyll i exempelvärden
+          </Button>
           
-          <button 
+          <Button 
             onClick={() => {
               if (!isLocalhost && showNotification) {
                 showNotification('openLCA-koppling körs via scripts/sync-openlca-co2.mjs i hostad drift.', 'info');
@@ -505,84 +507,87 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
               setShowOpenLcaPanel(!showOpenLcaPanel);
               if (!showOpenLcaPanel && olcaMethods.length === 0) loadOlcaMethods();
             }}
-            className={`px-3 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border flex items-center gap-2 ${showOpenLcaPanel ? 'bg-blue-100 border-blue-300 text-blue-800' : 'border-[var(--border)] text-[var(--text2)] hover:bg-gray-50'}`}
+            variant="ghost"
+            className={showOpenLcaPanel ? 'bg-blue-100 text-blue-800' : ''}
             title="Länka LCA-data via lokalt openLCA (IPC)"
+            icon="cable"
           >
-            <i className="fa-solid fa-plug text-blue-600"></i> openLCA
-          </button>
+            openLCA
+          </Button>
 
-          <button 
+          <Button 
             onClick={() => { setShowCatManager(!showCatManager); setShowAddForm(false); }}
-            className={`px-4 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap border ${showCatManager ? 'bg-gray-100 border-gray-300 text-gray-800' : 'border-[var(--border)] text-[var(--text2)] hover:bg-gray-50'}`}
+            variant="ghost"
+            className={showCatManager ? 'bg-gray-100 text-gray-800' : ''}
           >
             Hantera Kategorier
-          </button>
-          <button 
+          </Button>
+          <Button 
             onClick={() => { setShowAddForm(!showAddForm); setShowCatManager(false); if (showAddForm) setEditIndex(null); }}
-            className={`px-4 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap text-white ${editIndex !== null ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[var(--blue)] hover:bg-blue-700'}`}
+            variant="primary"
+            className={editIndex !== null && !showAddForm ? 'bg-amber-600 hover:bg-amber-700' : ''}
           >
             {showAddForm ? 'Avbryt' : (editIndex !== null ? 'Redigera Material' : '+ Nytt Material')}
-          </button>
-        </div>
+          </Button>
+        </Toolbar>
       </div>
 
       {showOpenLcaPanel && isLocalhost && (
         <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 mb-4 flex flex-col gap-4 animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm text-blue-800 flex items-center gap-2">
-              <i className="fa-solid fa-plug"></i> openLCA Integrering (Lokal IPC)
+              <i className="material-symbols-outlined text-[18px]">cable</i> openLCA Integrering (Lokal IPC)
             </h3>
-            <button onClick={() => setShowOpenLcaPanel(false)} className="text-gray-400 hover:text-gray-600">
-              <i className="fa-solid fa-times"></i>
-            </button>
+            <IconButton onClick={() => setShowOpenLcaPanel(false)} className="text-gray-400 hover:text-gray-600" icon="close" />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">IPC Endpoint URL</label>
-              <input type="text" value={olcaUrl} onChange={e => setOlcaUrl(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
+              <Input value={olcaUrl} onChange={e => setOlcaUrl(e.target.value)} className="w-full" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Metod för bedömning (Impact Method)</label>
-              <select value={olcaMethod ? olcaMethod['@id'] : ''} onChange={e => setOlcaMethod(olcaMethods.find(m => m['@id'] === e.target.value) || null)} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 disabled:opacity-50" disabled={olcaLoading}>
+              <Select value={olcaMethod ? olcaMethod['@id'] : ''} onChange={e => setOlcaMethod(olcaMethods.find(m => m['@id'] === e.target.value) || null)} className="w-full" disabled={olcaLoading}>
                 {olcaMethods.map(m => <option key={m['@id']} value={m['@id']}>{m.name}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Sök Mål (ProductSystem / Process)</label>
               <div className="flex gap-2">
-                <input type="text" value={olcaSearch} onChange={e => setOlcaSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchOlcaTargets(); }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500" placeholder="T.ex. Betong C25/30" />
-                <button onClick={searchOlcaTargets} disabled={olcaLoading} className="bg-white border border-gray-300 px-3 py-1 rounded text-sm hover:bg-gray-50 disabled:opacity-50">Sök</button>
+                <Input value={olcaSearch} onChange={e => setOlcaSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchOlcaTargets(); }} className="w-full" placeholder="T.ex. Betong C25/30" />
+                <Button onClick={searchOlcaTargets} disabled={olcaLoading} variant="ghost" className="bg-white">Sök</Button>
               </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Välj mål från sökning</label>
-              <select value={olcaSelectedTarget ? olcaSelectedTarget['@id'] : ''} onChange={e => setOlcaSelectedTarget(olcaResults.find(r => r['@id'] === e.target.value) || null)} className="w-full border border-gray-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 disabled:opacity-50" disabled={olcaLoading}>
+              <Select value={olcaSelectedTarget ? olcaSelectedTarget['@id'] : ''} onChange={e => setOlcaSelectedTarget(olcaResults.find(r => r['@id'] === e.target.value) || null)} className="w-full" disabled={olcaLoading}>
                 <option value="">-- Välj mål --</option>
                 {olcaResults.map(r => <option key={r['@id']} value={r['@id']}>{r.name} ({r['@type']})</option>)}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="mt-2 p-3 bg-white border border-blue-100 rounded text-sm flex flex-col md:flex-row gap-4 items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-gray-600">Material att uppdatera:</span>
-              <select value={olcaTargetMaterialIndex !== null ? olcaTargetMaterialIndex : ''} onChange={e => setOlcaTargetMaterialIndex(e.target.value === '' ? null : Number(e.target.value))} className="border border-gray-300 rounded px-2 py-1 text-sm min-w-[200px] outline-none focus:border-blue-500">
+              <Select value={olcaTargetMaterialIndex !== null ? olcaTargetMaterialIndex : ''} onChange={e => setOlcaTargetMaterialIndex(e.target.value === '' ? null : Number(e.target.value))} className="min-w-[200px]">
                 <option value="">-- Välj material i listan --</option>
                 {materials.map((m, i) => (
                   <option key={i} value={i}>{m.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             
-            <button 
+            <Button 
               onClick={applyOlcaImpact} 
               disabled={olcaLoading || olcaTargetMaterialIndex === null || !olcaMethod || !olcaSelectedTarget}
-              className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+              variant="primary"
+              className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
+              icon={olcaLoading ? "sync" : "calculate"}
             >
-              {olcaLoading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-calculator"></i>}
               Hämta & Spara Klimatdata
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -592,10 +597,9 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h3 className="font-semibold text-sm">Materialkategorier</h3>
             <div className="relative w-full sm:w-auto">
-              <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-              <input 
-                type="text" 
-                className="border border-[var(--border)] rounded-full px-3 py-1.5 pl-8 w-full sm:w-64 outline-none focus:border-[var(--blue)] text-sm"
+              <i className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-on-surface-variant)] text-[18px]">search</i>
+              <Input 
+                className="pl-8 w-full sm:w-64 rounded-full"
                 value={catSearch}
                 onChange={e => setCatSearch(e.target.value)}
                 placeholder="Sök eller filtrera kategorier..."
@@ -603,19 +607,19 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <input 
-              type="text" 
-              className="border border-[var(--border)] rounded px-3 py-1.5 w-64 outline-none focus:border-[var(--blue)] text-sm"
+            <Input 
+              className="w-64"
               value={newCatName}
               onChange={e => setNewCatName(e.target.value)}
               placeholder="Ny kategori..."
             />
-            <button 
+            <Button 
               onClick={() => { if(newCatName) { addCategory(newCatName); setNewCatName(''); if(showNotification) showNotification('Kategori tillagd.', 'success'); } }}
-              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
+              variant="primary"
+              className="bg-green-600 hover:bg-green-700"
             >
               Lägg till
-            </button>
+            </Button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {filteredCategories.length === 0 ? (
@@ -626,43 +630,38 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
               <div key={c} className="bg-white border border-[var(--border)] rounded p-2 flex items-center justify-between">
                 {editingCatName?.old === c ? (
                   <div className="flex gap-1 flex-1 mr-2">
-                    <input 
-                      type="text" 
-                      className="border border-[var(--border)] rounded px-2 py-1 flex-1 text-sm outline-none focus:border-[var(--blue)]"
+                    <Input 
+                      className="flex-1"
                       value={editingCatName.new}
                       onChange={e => setEditingCatName({...editingCatName, new: e.target.value})}
                     />
-                    <button 
+                    <IconButton 
                       onClick={() => { if(editingCatName.new) { renameCategory(c, editingCatName.new); setEditingCatName(null); if(showNotification) showNotification('Kategori uppdaterad.', 'success'); } }}
-                      className="text-green-600 hover:bg-green-50 px-2 py-1 rounded"
-                    >
-                      <i className="fa-solid fa-check"></i>
-                    </button>
-                    <button 
+                      className="text-green-600 hover:bg-green-50"
+                      icon="check"
+                    />
+                    <IconButton 
                       onClick={() => setEditingCatName(null)}
-                      className="text-red-500 hover:bg-red-50 px-2 py-1 rounded"
-                    >
-                      <i className="fa-solid fa-xmark"></i>
-                    </button>
+                      className="text-red-500 hover:bg-red-50"
+                      icon="close"
+                    />
                   </div>
                 ) : (
                   <>
                     <span className="text-sm font-medium truncate flex-1 min-w-0 mr-2">{c}</span>
                     <div className="flex gap-1 shrink-0">
-                      <button 
+                      <IconButton 
                         onClick={() => setEditingCatName({old: c, new: c})}
-                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--blue-lt)] hover:text-[var(--blue)] transition-colors text-[var(--text3)]"
+                        className="w-6 h-6 hover:bg-blue-50 hover:text-blue-600 transition-colors text-[var(--color-on-surface-variant)]"
                         title="Redigera"
-                      >
-                        <i className="fa-solid fa-pen text-[0.65rem]"></i>
-                      </button>
-                      <button 
+                        icon="edit"
+                      />
+                      <IconButton 
                         onClick={() => { removeCategory(c); if(showNotification) showNotification('Kategori borttagen.', 'success'); }}
-                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--red-lt)] hover:text-[var(--red)] transition-colors text-[var(--text3)]"
+                        className="w-6 h-6 hover:bg-red-50 hover:text-red-600 transition-colors text-[var(--color-on-surface-variant)]"
                         title="Ta bort"
-                      >
-                        <i className="fa-solid fa-trash text-[0.65rem]"></i>
-                      </button>
+                        icon="delete"
+                      />
                     </div>
                   </>
                 )}
@@ -676,9 +675,8 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
         <div className="bg-[var(--surface2)] border border-[var(--border)] rounded-xl p-4 mb-4 flex flex-wrap gap-4 items-end animate-in fade-in slide-in-from-top-2">
           <div>
             <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Namn</label>
-            <input 
-              type="text" 
-              className="border border-[var(--border)] rounded px-3 py-2 w-full sm:w-64 outline-none focus:border-[var(--blue)] text-sm"
+            <Input 
+              className="w-full sm:w-64"
               value={newMatForm.name}
               onChange={e => setNewMatForm({...newMatForm, name: e.target.value})}
               placeholder="Materialnamn"
@@ -686,22 +684,21 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           </div>
           <div>
             <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Kategori</label>
-            <select 
-              className="border border-[var(--border)] rounded px-3 py-2 w-full sm:w-48 outline-none focus:border-[var(--blue)] text-sm"
+            <Select 
+              className="w-full sm:w-48"
               value={newMatForm.cat}
               onChange={e => setNewMatForm({...newMatForm, cat: e.target.value})}
             >
               <option value="">Välj...</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
               <option value="ny">+ Ny kategori</option>
-            </select>
+            </Select>
           </div>
           {newMatForm.cat === 'ny' && (
             <div>
               <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Ny kategori</label>
-              <input 
-                type="text" 
-                className="border border-[var(--border)] rounded px-3 py-2 w-full sm:w-48 outline-none focus:border-[var(--blue)] text-sm"
+              <Input 
+                className="w-full sm:w-48"
                 value={newMatForm.catNy}
                 onChange={e => setNewMatForm({...newMatForm, catNy: e.target.value})}
                 placeholder="Kategorinamn"
@@ -710,9 +707,8 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           )}
           <div>
             <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Enhet</label>
-            <input 
-              type="text" 
-              className="border border-[var(--border)] rounded px-3 py-2 w-32 outline-none focus:border-[var(--blue)] text-sm"
+            <Input 
+              className="w-32"
               value={newMatForm.unit}
               onChange={e => setNewMatForm({...newMatForm, unit: e.target.value})}
               placeholder="t.ex st, pall"
@@ -720,21 +716,20 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
           </div>
           <div>
             <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Konto</label>
-            <input 
-              type="text" 
-              className="border border-[var(--border)] rounded px-3 py-2 w-32 outline-none focus:border-[var(--blue)] text-sm"
+            <Input 
+              className="w-32"
               value={newMatForm.konto}
               onChange={e => setNewMatForm({...newMatForm, konto: e.target.value})}
               placeholder="t.ex 4011"
             />
           </div>
-          <button 
+          <Button 
             onClick={handleAddMaterial}
             disabled={!newMatForm.name || (!newMatForm.cat && newMatForm.cat !== 'ny') || (newMatForm.cat === 'ny' && !newMatForm.catNy)}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white"
           >
             Spara
-          </button>
+          </Button>
         </div>
       )}
 
@@ -752,29 +747,29 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                 Byt Kategori
               </label>
               {bulkForm.updateCat && (
-                <select className="border border-blue-200 rounded px-2 py-0.5" value={bulkForm.cat} onChange={e => setBulkForm({...bulkForm, cat: e.target.value})}>
+                <Select className="w-auto h-7 py-0 px-2" value={bulkForm.cat} onChange={e => setBulkForm({...bulkForm, cat: e.target.value})}>
                   <option value="">Välj...</option>
                   {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                </Select>
               )}
 
               <label className="flex items-center gap-1 cursor-pointer">
                 <input type="checkbox" checked={bulkForm.updateKonto} onChange={(e) => setBulkForm({...bulkForm, updateKonto: e.target.checked})} />
                 Byt Konto
               </label>
-              {bulkForm.updateKonto && <input type="text" className="w-20 border border-blue-200 rounded px-2 py-0.5" value={bulkForm.konto} onChange={e => setBulkForm({...bulkForm, konto: e.target.value})} />}
+              {bulkForm.updateKonto && <Input className="w-20 h-7 py-0 px-2" value={bulkForm.konto} onChange={e => setBulkForm({...bulkForm, konto: e.target.value})} />}
 
               <label className="flex items-center gap-1 cursor-pointer">
                 <input type="checkbox" checked={bulkForm.updatePrice} onChange={(e) => setBulkForm({...bulkForm, updatePrice: e.target.checked})} />
                 Byt Pris
               </label>
-              {bulkForm.updatePrice && <input type="number" step="any" min="0" className="w-20 border border-blue-200 rounded px-2 py-0.5" value={bulkForm.price} onChange={e => setBulkForm({...bulkForm, price: e.target.value})} />}
+              {bulkForm.updatePrice && <Input type="number" step="any" min="0" className="w-20 h-7 py-0 px-2" value={bulkForm.price} onChange={e => setBulkForm({...bulkForm, price: e.target.value})} />}
 
               <label className="flex items-center gap-1 cursor-pointer">
                 <input type="checkbox" checked={bulkForm.updateSpill} onChange={(e) => setBulkForm({...bulkForm, updateSpill: e.target.checked})} />
                 Byt Spill %
               </label>
-              {bulkForm.updateSpill && <input type="number" step="any" min="0" className="w-16 border border-blue-200 rounded px-2 py-0.5" value={bulkForm.spill} onChange={e => setBulkForm({...bulkForm, spill: e.target.value})} />}
+              {bulkForm.updateSpill && <Input type="number" step="any" min="0" className="w-16 h-7 py-0 px-2" value={bulkForm.spill} onChange={e => setBulkForm({...bulkForm, spill: e.target.value})} />}
 
               <div className="w-full h-0"></div>
 
@@ -793,7 +788,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                 </div>
               )}
             </div>
-            <button 
+            <Button 
               onClick={() => {
                 const sn = (val: string | number) => Number(String(val).replace(',', '.')) || 0;
                 const updates: Partial<Material> = {};
@@ -824,68 +819,69 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                 }
               }}
               disabled={!(bulkForm.updateCat && bulkForm.cat) && !bulkForm.updateKonto && !bulkForm.updatePrice && !bulkForm.updateSpill && !bulkForm.updateHistory}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              variant="primary"
             >
               Tillämpa på {selectedIds.length} rader
-            </button>
-            <button 
+            </Button>
+            <Button 
               onClick={() => setSelectedIds([])}
-              className="text-xs text-blue-600 hover:underline ml-2 uppercase"
+              variant="ghost"
+              className="text-xs uppercase ml-2 border-transparent"
             >
               Avbryt
-            </button>
+            </Button>
             {deleteMultipleMaterials && (
-              <button 
+              <Button 
                 onClick={() => {
                   deleteMultipleMaterials(selectedIds);
                   setSelectedIds([]);
                   if (showNotification) showNotification('Flera material har raderats.', 'success');
                 }}
-                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-medium transition-colors ml-auto flex items-center gap-2"
+                variant="danger"
+                className="ml-auto"
+                icon="delete"
               >
-                <i className="fa-solid fa-trash text-xs"></i>
                 Ta bort {selectedIds.length} valda
-              </button>
+              </Button>
             )}
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left border-collapse min-w-[800px] whitespace-nowrap">
-            <thead>
-              <tr className="bg-[var(--surface3)] border-b-2 border-[var(--border2)]">
-                <th className="p-2 w-8 text-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={filtered.length > 0 && selectedIds.length === filtered.length}
-                    ref={input => {
-                      if (input) {
-                        input.indeterminate = selectedIds.length > 0 && selectedIds.length < filtered.length;
-                      }
-                    }}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedIds(filtered.map(m => materials.indexOf(m)).filter(idx => idx !== -1));
-                      } else {
-                        setSelectedIds([]);
-                      }
-                    }}
-                  />
-                </th>
-                <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Kategori</th>
-                <th className="p-2 w-[35%] max-w-[250px] text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Material</th>
-                <th className="p-2 text-center text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Enhet</th>
-                <th className="p-2 text-center text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Konto</th>
-                <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Pris (kr)</th>
-                <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]" title="kg CO2e per enhet">CO2/enh.</th>
-                <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]" title="LCA Indikatorer">LCA</th>
-                <th className="p-2 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Spill %</th>
-                <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Leverantör</th>
-                <th className="p-2 text-left text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]">Notering</th>
-                <th className="p-2 w-32 text-right text-[0.66rem] font-bold uppercase tracking-wider text-[var(--text3)]"></th>
-              </tr>
-            </thead>
-            <tbody>
+        <Table className="w-full text-sm text-left border-collapse min-w-[800px] whitespace-nowrap">
+          <Thead>
+            <tr className="bg-[var(--surface3)] border-b-2 border-[var(--border2)]">
+              <Th className="p-2 w-8 text-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                  ref={input => {
+                    if (input) {
+                      input.indeterminate = selectedIds.length > 0 && selectedIds.length < filtered.length;
+                    }
+                  }}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedIds(filtered.map(m => materials.indexOf(m)).filter(idx => idx !== -1));
+                    } else {
+                      setSelectedIds([]);
+                    }
+                  }}
+                />
+              </Th>
+              <Th>Kategori</Th>
+              <Th className="w-[35%] max-w-[250px]">Material</Th>
+              <Th className="text-center">Enhet</Th>
+              <Th className="text-center">Konto</Th>
+              <Th numeric>Pris (kr)</Th>
+              <Th numeric title="kg CO2e per enhet">CO2/enh.</Th>
+              <Th title="LCA Indikatorer">LCA</Th>
+              <Th numeric>Spill %</Th>
+              <Th>Leverantör</Th>
+              <Th>Notering</Th>
+              <Th className="w-32"></Th>
+            </tr>
+          </Thead>
+          <Tbody>
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="p-8 text-center text-[var(--text3)]">
@@ -941,10 +937,10 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                             placeholder="Konto"
                           />
                         </td>
-                        <td className="p-2 px-3 text-right">
+                        <td className="p-2 px-3 num">
                           <PriceEditable index={actualIndex} mat={m} />
                         </td>
-                        <td className="p-2 px-3 text-right">
+                        <td className="p-2 px-3 num">
                           <CO2Editable index={actualIndex} mat={m} />
                         </td>
                         <td className="p-2 px-3 text-left">
@@ -967,44 +963,40 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                             <span className="text-[0.65rem] text-gray-400 italic">—</span>
                           )}
                         </td>
-                        <td className="p-2 px-3 text-right">
+                        <td className="p-2 px-3 num">
                           <div className="flex items-center justify-end gap-0.5">
                             <SpillEditable index={actualIndex} mat={m} />
                             <span>%</span>
                           </div>
                         </td>
-                        <td className="p-2 px-3 text-[.58rem] text-gray-500">{m.lev || '—'}</td>
+                        <td className="p-2 px-3 text-[.58rem] text-gray-500 num-mono text-left">{m.lev || '—'}</td>
                         <td className="p-2 px-3 text-[.57rem] text-gray-500">{m.note || ''}</td>
                         <td className="p-2 px-3 text-right">
                           <div className="flex justify-end gap-1 transition-opacity">
-                            <button 
+                            <IconButton 
                               onClick={() => setExpandedHistory(expandedHistory === actualIndex ? null : actualIndex)}
-                              className={`w-6 h-6 flex items-center justify-center rounded border border-[var(--border)] transition-colors ${expandedHistory === actualIndex ? 'bg-[var(--blue-lt)] text-[var(--blue)] border-blue-200' : 'text-[var(--text3)] hover:bg-[var(--blue-lt)] hover:text-[var(--blue)] hover:border-blue-200'}`}
+                              className={`w-6 h-6 border transition-colors ${expandedHistory === actualIndex ? 'bg-blue-100 text-blue-600 border-blue-200' : 'border-[var(--color-outline-variant)] text-[var(--color-on-surface-variant)] hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'}`}
                               title="Visa prishistorik"
-                            >
-                              <i className="fa-solid fa-chart-line text-[0.65rem]"></i>
-                            </button>
-                            <button 
+                              icon="timeline"
+                            />
+                            <IconButton 
                               onClick={() => handleEdit(m, actualIndex)}
-                              className="w-6 h-6 flex items-center justify-center rounded border border-[var(--border)] hover:bg-[var(--blue-lt)] hover:text-[var(--blue)] hover:border-blue-200 transition-colors text-[var(--text3)]"
+                              className="w-6 h-6 border border-[var(--color-outline-variant)] hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors text-[var(--color-on-surface-variant)]"
                               title="Redigera"
-                            >
-                              <i className="fa-solid fa-pen text-[0.65rem]"></i>
-                            </button>
-                            <button 
+                              icon="edit"
+                            />
+                            <IconButton 
                               onClick={() => { addMaterial({ ...m, name: `${m.name} (Kopia)` }); if (showNotification) showNotification('Material duplicerat.', 'success'); }}
-                              className="w-6 h-6 flex items-center justify-center rounded border border-[var(--border)] hover:bg-green-50 hover:text-green-600 hover:border-green-200 transition-colors text-[var(--text3)]"
+                              className="w-6 h-6 border border-[var(--color-outline-variant)] hover:bg-green-50 hover:text-green-600 hover:border-green-200 transition-colors text-[var(--color-on-surface-variant)]"
                               title="Duplicera"
-                            >
-                              <i className="fa-regular fa-copy text-[0.65rem]"></i>
-                            </button>
-                            <button 
+                              icon="content_copy"
+                            />
+                            <IconButton 
                               onClick={() => { deleteMaterial(actualIndex); if (showNotification) showNotification('Material borttaget.', 'success'); }}
-                              className="w-6 h-6 flex items-center justify-center rounded border border-[var(--border)] hover:bg-[var(--red-lt)] hover:text-[var(--red)] hover:border-red-200 transition-colors text-[var(--text3)]"
+                              className="w-6 h-6 border border-[var(--color-outline-variant)] hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-[var(--color-on-surface-variant)]"
                               title="Ta bort"
-                            >
-                              <i className="fa-solid fa-trash text-[0.65rem]"></i>
-                            </button>
+                              icon="delete"
+                            />
                           </div>
                         </td>
                       </tr>
@@ -1013,12 +1005,11 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                           <td colSpan={11} className="p-4 border-b border-[var(--border)]">
                             <div className="flex items-center justify-between font-bold text-xs text-[var(--text2)] uppercase tracking-wider mb-2">
                               <span>Prishistorik för {m.name}</span>
-                              <button 
+                              <IconButton 
                                 onClick={() => setExpandedHistory(null)}
                                 className="text-[var(--text2)] hover:text-gray-900"
-                              >
-                                <i className="fa-solid fa-xmark"></i>
-                              </button>
+                                icon="close"
+                              />
                             </div>
                             <div className="h-48 w-full bg-white border border-[var(--border)] rounded-lg p-2">
                               {m.priceHistory && m.priceHistory.length > 0 ? (
@@ -1048,9 +1039,8 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                   )
                 })
               )}
-            </tbody>
-          </table>
-        </div>
+            </Tbody>
+          </Table>
       </div>
     </div>
   );

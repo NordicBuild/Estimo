@@ -77,9 +77,19 @@ export function useSupabaseData(
     }
   });
 
+  const [byggdelTemplates, setByggdelTemplates] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('betong_byggdel_templates');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   useEffect(() => {
     if (!user) {
       setMaterials(INITIAL_MATERIALS);
+
       setArbetsData(INITIAL_ARBETS_DATA);
       setDataLoaded(true);
       setDataSpaceId(null);
@@ -151,6 +161,20 @@ export function useSupabaseData(
       }
 
       if (sessionData) {
+        // Fetch templates separately as they are in a different table
+        try {
+          const { data: tplData, error: tplError } = await supabase.from('byggdel_templates').select('*').eq('company_id', dsId);
+          if (!tplError && tplData) {
+            setByggdelTemplates(tplData);
+          } else {
+             const localTpls = localStorage.getItem('betong_byggdel_templates');
+             if (localTpls) setByggdelTemplates(JSON.parse(localTpls));
+          }
+        } catch (e) {
+          const localTpls = localStorage.getItem('betong_byggdel_templates');
+          if (localTpls) setByggdelTemplates(JSON.parse(localTpls));
+        }
+
         const matsDoc = sessionData.find(d => d.id === `materials_${dsId}`);
         if (matsDoc && !localStorage.getItem('betong_materials')) {
           setMaterials(matsDoc.data as Material[]);
@@ -239,6 +263,9 @@ export function useSupabaseData(
 
         const localCategories = localStorage.getItem('betong_custom_categories');
         if (localCategories) setCustomCategories(JSON.parse(localCategories));
+
+        const localTpls = localStorage.getItem('betong_byggdel_templates');
+        if (localTpls) setByggdelTemplates(JSON.parse(localTpls));
       }
 
       setDataLoaded(true);
@@ -320,6 +347,30 @@ export function useSupabaseData(
     }
   }, [projects, dataSpaceId, dbReady]);
 
+  useEffect(() => {
+    localStorage.setItem('betong_byggdel_templates', JSON.stringify(byggdelTemplates));
+  }, [byggdelTemplates]);
+
+  const addTemplate = async (name: string, byggdel: Byggdel) => {
+    const newTpl = {
+      id: Date.now(),
+      company_id: dataSpaceId || 'local',
+      name,
+      data: { ...byggdel, id: undefined }
+    };
+    setByggdelTemplates(prev => [...prev, newTpl]);
+    if (dbReady && dataSpaceId) {
+      await supabase.from('byggdel_templates').insert(newTpl).catch(() => {});
+    }
+  };
+
+  const deleteTemplate = async (id: number) => {
+    setByggdelTemplates(prev => prev.filter(t => t.id !== id));
+    if (dbReady && dataSpaceId) {
+      await supabase.from('byggdel_templates').delete().eq('id', id).catch(() => {});
+    }
+  };
+
   const switchProject = (newId: string) => {
     const target = projects.find(p => p.id === newId);
     if (target) {
@@ -346,6 +397,7 @@ export function useSupabaseData(
     accessDenied, setAccessDenied,
     currentUserRole, setCurrentUserRole,
     customCategories, setCustomCategories,
+    byggdelTemplates, addTemplate, deleteTemplate,
     switchProject
   };
 }

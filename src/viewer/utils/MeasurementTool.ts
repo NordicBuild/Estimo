@@ -4,6 +4,8 @@ import { distance3, polygonArea3, polygonPerimeter3, angleBetween3, prismVolume 
 
 export interface MeasurementData {
     id: string;
+    groupId?: string;
+    color?: string;
     p1?: THREE.Vector3;
     p2?: THREE.Vector3;
     points?: THREE.Vector3[];
@@ -24,9 +26,12 @@ export class MeasurementTool {
     private isMeasuring = false;
     private measurements: MeasurementData[] = [];
 
+    public activeGroupId: string = 'default';
+    public activeColor: string = '#ef4444';
+
     // Materials
-    private lineMaterial = new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 3, depthTest: false });
-    private pointMaterial = new THREE.MeshBasicMaterial({ color: 0xff3333, depthTest: false });
+    private getLineMaterial() { return new THREE.LineBasicMaterial({ color: this.activeColor, linewidth: 3, depthTest: false }); }
+    private getPointMaterial() { return new THREE.MeshBasicMaterial({ color: this.activeColor, depthTest: false }); }
 
     // Events
     public onMeasurementsUpdated?: (measurements: MeasurementData[]) => void;
@@ -112,7 +117,7 @@ export class MeasurementTool {
         this.points.push(p);
 
         // Create a visual marker for the point
-        const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), this.pointMaterial);
+        const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), this.getPointMaterial());
         sphere.position.copy(p);
         sphere.renderOrder = 999; // Draw on top
         sphere.userData.isTemp = true;
@@ -143,7 +148,7 @@ export class MeasurementTool {
             const dist = distance3(p1, p2);
             
             const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-            const line = new THREE.Line(geometry, this.lineMaterial);
+            const line = new THREE.Line(geometry, this.getLineMaterial());
             line.renderOrder = 998;
             this.manager.core.scene.add(line);
             this.lines.push(line);
@@ -152,6 +157,7 @@ export class MeasurementTool {
 
             this.measurements.push({
                 id: Date.now().toString(),
+                groupId: this.activeGroupId, color: this.activeColor,
                 p1, p2, points: pts, distance: dist, midPoint, type: 'distance'
             });
         } else if (this.mode === 'angle' && pts.length >= 3) {
@@ -161,19 +167,20 @@ export class MeasurementTool {
             const angle = angleBetween3(p1, p2, p3);
 
             const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2, p3]);
-            const line = new THREE.Line(geometry, this.lineMaterial);
+            const line = new THREE.Line(geometry, this.getLineMaterial());
             line.renderOrder = 998;
             this.manager.core.scene.add(line);
             this.lines.push(line);
 
             this.measurements.push({
                 id: Date.now().toString(),
+                groupId: this.activeGroupId, color: this.activeColor,
                 points: pts, angle, midPoint: p2, type: 'angle'
             });
         } else if (this.mode === 'area' || this.mode === 'volume') {
             // Close polygon
             const geometry = new THREE.BufferGeometry().setFromPoints([...pts, pts[0]]);
-            const line = new THREE.Line(geometry, this.lineMaterial);
+            const line = new THREE.Line(geometry, this.getLineMaterial());
             line.renderOrder = 998;
             this.manager.core.scene.add(line);
             this.lines.push(line);
@@ -195,12 +202,71 @@ export class MeasurementTool {
 
             this.measurements.push({
                 id: Date.now().toString(),
+                groupId: this.activeGroupId, color: this.activeColor,
                 points: pts, area, perimeter, volume: vol, midPoint, type: this.mode
             });
         }
 
         this.points = [];
         this.notifyUpdate();
+    }
+
+    public removeMeasurement(id: string) {
+        // Find the measurement to remove
+        const m = this.measurements.find(x => x.id === id);
+        if (!m) return;
+        
+        // Remove from list
+        this.measurements = this.measurements.filter(x => x.id !== id);
+        
+        // Remove visuals (this requires more complex logic to track which line/points belong to which measurement, 
+        // but for now we can just clear everything and re-draw, or since we push in order, we could reconstruct. 
+        // Actually the simplest is to rebuild the meshes).
+        this.rebuildVisuals();
+        this.notifyUpdate();
+    }
+
+    private rebuildVisuals() {
+        // Clear all
+        this.lines.forEach(l => this.manager.core.scene.remove(l));
+        this.pointMeshes.forEach(p => this.manager.core.scene.remove(p));
+        this.lines = [];
+        this.pointMeshes = [];
+
+        // Redraw all remaining
+        const oldColor = this.activeColor;
+        this.measurements.forEach(m => {
+            this.activeColor = m.color || '#ef4444';
+            
+            // Re-create points
+            m.points?.forEach(p => {
+                const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), this.getPointMaterial());
+                sphere.position.copy(p);
+                sphere.renderOrder = 999;
+                sphere.userData.isTemp = false;
+                this.manager.core.scene.add(sphere);
+                this.pointMeshes.push(sphere);
+            });
+
+            // Re-create lines
+            if (m.type === 'distance' || m.type === 'angle') {
+                const geometry = new THREE.BufferGeometry().setFromPoints(m.points || []);
+                const line = new THREE.Line(geometry, this.getLineMaterial());
+                line.renderOrder = 998;
+                this.manager.core.scene.add(line);
+                this.lines.push(line);
+            } else if (m.type === 'area' || m.type === 'volume') {
+                const pts = m.points || [];
+                if (pts.length > 0) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints([...pts, pts[0]]);
+                    const line = new THREE.Line(geometry, this.getLineMaterial());
+                    line.renderOrder = 998;
+                    this.manager.core.scene.add(line);
+                    this.lines.push(line);
+                }
+            }
+        });
+        this.activeColor = oldColor;
     }
 
     private notifyUpdate() {

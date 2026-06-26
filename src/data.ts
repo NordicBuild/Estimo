@@ -184,6 +184,7 @@ export type Byggdel = {
     hrs?: number;
     cost?: number;
     matUnit?: string;
+    unitPrice?: number; // Custom unit price
   }[];
 };
 

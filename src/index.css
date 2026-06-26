@@ -120,7 +120,23 @@ body {
 
 .empty-state { text-align: center; padding: 30px; color: var(--color-outline); }
 .mono { font-family: var(--font-mono); }
-.num { text-align: right; }
+.num { text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.num-mono { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+    transform: none !important;
+  }
+}
 
 .hide-scrollbar::-webkit-scrollbar {
   display: none;

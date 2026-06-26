@@ -64,6 +64,7 @@ export default function App() {
   }, [adminSubTab]);
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(window.innerWidth >= 1024);
   const { dialogConfig, confirmAction, promptAction } = useDialog();
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
 
@@ -77,7 +78,7 @@ export default function App() {
     projects, setProjects,
     activeProjectId, setActiveProjectId,
     projectInfo, setProjectInfo,
-    byggdelar, setByggdelar,
+    byggdelar, setByggdelar: setSupabaseByggdelar,
     settings, setSettings,
     companyInfo, setCompanyInfo,
     userSettings, setUserSettings,
@@ -88,8 +89,69 @@ export default function App() {
     accessDenied, setAccessDenied,
     currentUserRole, setCurrentUserRole,
     customCategories, setCustomCategories,
+    byggdelTemplates, addTemplate, deleteTemplate,
     switchProject
   } = useSupabaseData(user, appMode, showNotification);
+
+  const [byggdelHistory, setByggdelHistory] = useState<Byggdel[][]>([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  // Initialize history when project changes
+  useEffect(() => {
+    setByggdelHistory([byggdelar]);
+    setHistoryIndex(0);
+  }, [activeProjectId]);
+
+  const setByggdelar = (update: React.SetStateAction<Byggdel[]>) => {
+    setSupabaseByggdelar(prev => {
+      const next = typeof update === 'function' ? (update as any)(prev) : update;
+      
+      setByggdelHistory(h => {
+        const newHistory = h.slice(0, historyIndex + 1);
+        newHistory.push(next);
+        if (newHistory.length > 50) newHistory.shift();
+        return newHistory;
+      });
+      setHistoryIndex(idx => Math.min(idx + 1, 50));
+      
+      return next;
+    });
+  };
+
+  const undoByggdelar = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setSupabaseByggdelar(byggdelHistory[newIndex]);
+    }
+  };
+
+  const redoByggdelar = () => {
+    if (historyIndex < byggdelHistory.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setSupabaseByggdelar(byggdelHistory[newIndex]);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+          // Let native undo work in input fields
+          return;
+        }
+        e.preventDefault();
+        if (e.shiftKey) {
+          redoByggdelar();
+        } else {
+          undoByggdelar();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyIndex, byggdelHistory]);
 
   const createFolder = () => {
     promptAction("Ny mapp", "Namn på ny mapp:", "", (name) => {
@@ -355,6 +417,29 @@ export default function App() {
     const newMats = [...materials];
     newMats[index] = { ...newMats[index], ...updates };
     pushMaterials(newMats);
+  };
+  
+  const updateMaterialPrice = (materialName: string, price: number) => {
+    const idx = materials.findIndex(m => m.name === materialName);
+    if (idx !== -1) {
+      const mat = materials[idx];
+      const today = new Date().toISOString().split('T')[0];
+      const newHistory = [...(mat.priceHistory || [])];
+      
+      if (newHistory.length === 0 && mat.price > 0) {
+        newHistory.push({ date: '2023-01-01', price: mat.price });
+      }
+      
+      const existingTodayIndex = newHistory.findIndex(h => h.date === today);
+      if (existingTodayIndex !== -1) {
+        newHistory[existingTodayIndex] = { date: today, price: price };
+      } else {
+        newHistory.push({ date: today, price: price });
+      }
+      
+      updateMaterial(idx, { price: price, priceHistory: newHistory });
+      showNotification(`Pris sparat till register för ${materialName}.`, 'success');
+    }
   };
   
   const updateMultipleMaterials = (indices: number[], updates: Partial<Material>, addHistory?: { price: number, date: string, updateCurrentPrice: boolean }) => {
@@ -779,6 +864,15 @@ export default function App() {
     });
   };
 
+  const addTemplatePart = (templateData: any) => {
+    const newPart = {
+      ...templateData,
+      id: Date.now() + Math.floor(Math.random() * 1000),
+    };
+    setByggdelar(prev => [...prev, newPart]);
+    showNotification(`Byggdel från mall '${templateData.name || 'okänd'}' tillagd.`, 'success');
+  };
+
   const removePart = (id: number) => {
     const p = byggdelar.find(x => x.id === id);
     if (!p) return;
@@ -910,6 +1004,22 @@ export default function App() {
       return p;
     }));
     showNotification('Moment borttaget.', 'success');
+  };
+
+  const duplicateMoment = (byggdelId: number, momentIndex: number) => {
+    setByggdelar(prev => prev.map(p => {
+      if (p.id === byggdelId) {
+        const newM = [...p.moments];
+        const original = newM[momentIndex];
+        if (original) {
+          const duplicate = { ...original, label: original.label + ' (Kopia)' };
+          newM.splice(momentIndex + 1, 0, duplicate);
+        }
+        return { ...p, moments: newM };
+      }
+      return p;
+    }));
+    showNotification('Moment duplicerat.', 'success');
   };
 
   const updatePartQty = (id: number, qty: number) => {
@@ -1208,9 +1318,12 @@ export default function App() {
             handleImportExcel={handleImportExcel}
             handleExportExcel={handleExportExcel}
             downloadTemplate={downloadTemplate}
+            inspectorOpen={inspectorOpen}
+            setInspectorOpen={setInspectorOpen}
           />
 
-          <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf', 'bim'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
+          <div className="flex-1 relative flex min-w-0 min-h-0">
+            <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf', 'bim'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
         {activeTab === 'hemsida' && (
           <HemsidaTab 
             user={user}
@@ -1297,6 +1410,14 @@ export default function App() {
             byggdelar={byggdelar} 
             calcResult={calcResult} 
             materials={materials}
+            projectInfo={projectInfo}
+            companyInfo={companyInfo}
+            settings={settings}
+            updateSettings={(key, val) => setSettings({ ...settings, [key]: val })}
+            byggdelTemplates={byggdelTemplates}
+            addTemplate={addTemplate}
+            deleteTemplate={deleteTemplate}
+            addPartFromTemplate={addTemplatePart}
             toggleByggdel={toggleByggdel} 
             toggleAllByggdelar={toggleAllByggdelar}
             reorderByggdelar={reorderByggdelar}
@@ -1309,6 +1430,8 @@ export default function App() {
             cloneType={cloneType}
             openModal={openModal} 
             updateMoment={updateMoment}
+            duplicateMoment={duplicateMoment}
+            updateMaterialPrice={updateMaterialPrice}
             addMoment={addMoment}
             removeMoment={removeMoment}
             updatePartQty={updatePartQty}
@@ -1358,6 +1481,11 @@ export default function App() {
         {activeTab === 'planering' && <PlaneringTab calcResult={calcResult} byggdelar={byggdelar} reorderByggdelar={reorderByggdelar} reorderMoment={reorderMoment} updateStartDay={updateStartDay} updatePlanDates={updatePlanDates} updateMomentWorkers={updateMomentWorkers} updateByggdelColor={updateByggdelColor} />}
         {activeTab === 'slutsida' && <SlutsidaTab settings={settings} setSettings={setSettings} calcResult={calcResult} />}
         {activeTab === 'anbud' && <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} updateByggdelOfferPrice={updateByggdelOfferPrice} />}
+        {activeTab !== 'anbud' && (
+          <div style={{ position: 'absolute', top: '-10000px', left: 0, width: '1000px', zIndex: -1000, pointerEvents: 'none' }}>
+            <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} updateByggdelOfferPrice={updateByggdelOfferPrice} />
+          </div>
+        )}
         {activeTab === 'dokument_ffu' && (
           <div className="p-8 flex items-center justify-center h-full">
             <div className="text-center">
@@ -1431,6 +1559,28 @@ export default function App() {
           </div>
         )}
       </main>
+            {/* Inspector Panel */}
+            <div 
+              className={`
+                ${inspectorOpen ? 'translate-x-0 shadow-2xl lg:shadow-none' : 'translate-x-full lg:translate-x-0 lg:hidden'} 
+                fixed inset-y-0 right-0 z-[2000] w-80 max-w-[85vw] bg-surface border-l border-outline-variant transition-all duration-300 ease-in-out flex flex-col
+                lg:static lg:z-auto ${inspectorOpen ? 'lg:flex' : 'hidden'} shrink-0
+              `}
+            >
+              <div className="flex items-center justify-between p-3 border-b border-outline-variant bg-surface-container-lowest shrink-0 lg:hidden">
+                <span className="font-bold text-sm tracking-wider text-on-surface-variant uppercase">Inspektor</span>
+                <button onClick={() => setInspectorOpen(false)} className="text-on-surface-variant hover:text-on-surface p-1">
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+              <div id="inspector-portal-target" className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden bg-surface-container-lowest"></div>
+            </div>
+
+            {/* Mobile Inspector overlay backdrop */}
+            {inspectorOpen && (
+              <div className="fixed inset-0 bg-black/20 z-[1999] lg:hidden" onClick={() => setInspectorOpen(false)}></div>
+            )}
+          </div>
       </div>
       </div>
 

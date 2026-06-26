@@ -6,6 +6,8 @@ interface WorkspaceActionsProps {
   handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleExportExcel: () => void;
   downloadTemplate: () => void;
+  inspectorOpen: boolean;
+  setInspectorOpen: (open: boolean) => void;
 }
 
 export function WorkspaceActions({
@@ -14,37 +16,50 @@ export function WorkspaceActions({
   handleImportExcel,
   handleExportExcel,
   downloadTemplate,
+  inspectorOpen,
+  setInspectorOpen,
 }: WorkspaceActionsProps) {
   return (
-    <div className="bg-surface border-b border-outline-variant px-4 md:px-8 py-3 flex flex-wrap gap-3 items-center text-sm z-40 shrink-0 print:hidden">
-      <button className="px-4 py-2 rounded-lg text-xs font-bold text-on-primary bg-primary hover:opacity-90 transition-opacity self-start md:self-auto shrink-0 flex items-center shadow-sm" onClick={() => openModal()}>
-        <span className="material-symbols-outlined text-[18px] mr-1">add</span> Ny Byggdel
-      </button>
+    <div className="bg-surface border-b border-outline-variant px-4 md:px-8 py-3 flex flex-wrap gap-3 items-center justify-between text-sm z-40 shrink-0 print:hidden">
+      <div className="flex flex-wrap gap-3 items-center">
+        <button className="px-4 py-2 rounded-lg text-xs font-bold text-on-primary bg-primary hover:opacity-90 transition-opacity self-start md:self-auto shrink-0 flex items-center shadow-sm" onClick={() => openModal()}>
+          <span className="material-symbols-outlined text-[18px] mr-1">add</span> Ny Byggdel
+        </button>
+        <button 
+          className="px-4 py-2 rounded-lg text-xs font-bold border border-outline-variant text-on-surface bg-surface hover:bg-surface-container-low transition-colors self-start md:self-auto shrink-0 flex items-center" 
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <span className="material-symbols-outlined text-[18px] mr-1 text-on-surface-variant">upload_file</span> Importera från Excel
+        </button>
+        <button 
+          className="px-4 py-2 rounded-lg text-xs font-bold border border-outline-variant text-on-surface bg-surface hover:bg-surface-container-low transition-colors self-start md:self-auto shrink-0 flex items-center" 
+          onClick={handleExportExcel}
+        >
+          <span className="material-symbols-outlined text-[18px] mr-1 text-on-surface-variant">file_download</span> Exportera Total
+        </button>
+        <button 
+          className="px-4 py-2 rounded-lg text-xs font-bold border border-outline-variant text-on-surface-variant bg-surface hover:bg-surface-container-low transition-colors self-start md:self-auto shrink-0 flex items-center" 
+          onClick={downloadTemplate}
+        >
+          <span className="material-symbols-outlined text-[18px] mr-1">download</span> Ladda ner mall
+        </button>
+        <input 
+          type="file" 
+          accept=".xlsx, .xls, .csv" 
+          className="hidden" 
+          ref={fileInputRef} 
+          onChange={handleImportExcel} 
+        />
+      </div>
+      
       <button 
-        className="px-4 py-2 rounded-lg text-xs font-bold border border-outline-variant text-on-surface bg-surface hover:bg-surface-container-low transition-colors self-start md:self-auto shrink-0 flex items-center" 
-        onClick={() => fileInputRef.current?.click()}
+        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center transition-colors ${inspectorOpen ? 'bg-primary-container text-on-primary-container border-primary-container' : 'bg-surface text-on-surface border-outline-variant hover:bg-surface-container-low'}`}
+        onClick={() => setInspectorOpen(!inspectorOpen)}
+        title="Växla Inspektorpanel"
       >
-        <span className="material-symbols-outlined text-[18px] mr-1 text-on-surface-variant">upload_file</span> Importera från Excel
+        <span className="material-symbols-outlined text-[18px] mr-1">{inspectorOpen ? 'right_panel_close' : 'right_panel_open'}</span>
+        Inspektor
       </button>
-      <button 
-        className="px-4 py-2 rounded-lg text-xs font-bold border border-outline-variant text-on-surface bg-surface hover:bg-surface-container-low transition-colors self-start md:self-auto shrink-0 flex items-center" 
-        onClick={handleExportExcel}
-      >
-        <span className="material-symbols-outlined text-[18px] mr-1 text-on-surface-variant">file_download</span> Exportera Total
-      </button>
-      <button 
-        className="px-4 py-2 rounded-lg text-xs font-bold border border-outline-variant text-on-surface-variant bg-surface hover:bg-surface-container-low transition-colors self-start md:self-auto shrink-0 flex items-center" 
-        onClick={downloadTemplate}
-      >
-        <span className="material-symbols-outlined text-[18px] mr-1">download</span> Ladda ner mall
-      </button>
-      <input 
-        type="file" 
-        accept=".xlsx, .xls, .csv" 
-        className="hidden" 
-        ref={fileInputRef} 
-        onChange={handleImportExcel} 
-      />
     </div>
   );
 }

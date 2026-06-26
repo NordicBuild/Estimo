@@ -1,6 +1,7 @@
 import React from 'react';
 import { CalculationResult } from '../useCalculation';
 import { Byggdel, ProjectInfo, CompanyInfo, INITIAL_TIDSFAKTORER } from '../data';
+import { exportPdf, exportExcel } from '../exportUtils';
 
 interface Props {
   calcResult: CalculationResult;
@@ -15,9 +16,26 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, upda
 
   const activeByggdelar = byggdelar.filter(b => b.active !== false);
 
+  const handleExportPdf = () => {
+    exportPdf('pdf-anbud-content', `Anbud_${projectInfo.name || 'Projekt'}.pdf`);
+  };
+
+  const handleExportExcel = () => {
+    exportExcel(byggdelar, calcResult, projectInfo, companyInfo);
+  };
+
   return (
     <div className="w-full px-4 sm:px-6 md:px-8 my-8">
-      <div className="card bg-white p-8 border border-[var(--border)] shadow-lg">
+      <div className="mb-4 flex gap-2 justify-end print:hidden">
+        <button className="btn btn-secondary border border-gray-300 bg-white shadow-sm hover:bg-gray-50 text-sm px-4 py-2 font-medium" onClick={handleExportExcel}>
+          <i className="fa-solid fa-file-excel text-green-600 mr-2"></i> Exportera Excel
+        </button>
+        <button className="btn btn-primary bg-[var(--blue)] text-white shadow-sm hover:bg-[var(--blue-dk)] text-sm px-4 py-2 font-medium" onClick={handleExportPdf}>
+          <i className="fa-solid fa-file-pdf mr-2"></i> Exportera PDF
+        </button>
+      </div>
+
+      <div id="pdf-anbud-content" className="card bg-white p-8 border border-[var(--border)] shadow-lg">
         <div className="flex justify-between border-b border-[var(--border)] pb-5 mb-6">
           <div>
             <h2 className="m-0 text-2xl font-extrabold tracking-tight">Anbudsunderlag</h2>
@@ -78,10 +96,10 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, upda
             <thead>
               <tr className="bg-[var(--surface3)] text-xs uppercase tracking-wide text-[var(--text2)]">
                 <th className="p-3 border-b border-[var(--border)]">Byggdel</th>
-                <th className="p-3 border-b border-[var(--border)] text-right">Antal</th>
-                <th className="p-3 border-b border-[var(--border)] text-right">Mängd</th>
-                <th className="p-3 border-b border-[var(--border)] text-right">Enhet</th>
-                <th className="p-3 border-b border-[var(--border)] text-right relative group">
+                <th className="p-3 border-b border-[var(--border)] num">Antal</th>
+                <th className="p-3 border-b border-[var(--border)] num">Mängd</th>
+                <th className="p-3 border-b border-[var(--border)] text-center">Enhet</th>
+                <th className="p-3 border-b border-[var(--border)] num relative group">
                   Totalt Pris (inkl. påslag)
                   <div className="absolute right-0 top-full mt-1 hidden group-hover:block bg-black text-white text-[10px] p-1 rounded shadow-lg whitespace-nowrap z-10 print:hidden">
                     Klicka på ikonen på en rad för att dölja/visa pris.
@@ -127,10 +145,10 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, upda
                         return (
                           <tr key={b.id} className="border-b border-[var(--border)] hover:bg-[var(--surface2)]">
                             <td className="p-3 font-semibold pl-6">{b.name}</td>
-                            <td className="p-3 text-right font-mono text-[var(--text2)]">{b.antal || 1} st</td>
-                            <td className="p-3 text-right font-mono">{b.qty || 1}</td>
-                            <td className="p-3 text-right text-[var(--text3)] text-xs">{partCalc.unit}</td>
-                            <td className="p-3 text-right font-mono font-bold flex items-center justify-end gap-2 group/price min-h-[44px]">
+                            <td className="p-3 num text-[var(--text2)]">{b.antal || 1} st</td>
+                            <td className="p-3 num">{b.qty || 1}</td>
+                            <td className="p-3 text-center text-[var(--text3)] text-xs">{partCalc.unit}</td>
+                            <td className="p-3 num font-bold flex items-center justify-end gap-2 group/price min-h-[44px]">
                               <span>{b.showPriceInOffer ? formatKr(partAnbudPrice) : '---'}</span>
                               <button 
                                 onClick={() => updateByggdelOfferPrice?.(b.id, !b.showPriceInOffer)}
@@ -152,20 +170,32 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, upda
         </div>
 
         <div className="flex justify-end pt-4 border-t-2 border-[var(--border)] mt-8">
-          <div className="w-80 border border-[var(--blue-lt)] rounded-lg overflow-hidden">
-            <div className="bg-[var(--blue-lt)] text-[var(--blue-dk)] text-center py-2 text-[0.65rem] font-extrabold uppercase tracking-widest border-b border-[var(--blue-glow)]">
+          <div className="w-96 border border-[var(--border)] rounded-lg overflow-hidden shadow-sm">
+            <div className="bg-[var(--surface3)] text-[var(--text1)] text-center py-2 text-[0.65rem] font-extrabold uppercase tracking-widest border-b border-[var(--border)]">
                Sammanställning
             </div>
-            <div className="p-4 grid gap-2">
-              <div className="flex justify-between font-semibold text-sm">
+            <div className="p-5 grid gap-2">
+              <div className="flex justify-between text-sm text-[var(--text2)]">
+                <span>Självkostnad:</span>
+                <span className="font-mono">{formatKr(calcResult.projNetto)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-[var(--text2)]">
+                <span>Omkostnader:</span>
+                <span className="font-mono">{formatKr(calcResult.omkTot)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-[var(--text2)] border-b border-[var(--border)] pb-2 mb-1">
+                <span>Vinst / Påslag:</span>
+                <span className="font-mono">{formatKr(calcResult.vTot)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-[var(--text1)] text-base pt-1">
                 <span>Summa exkl. moms:</span>
                 <span className="font-mono">{formatKr(calcResult.anbud)}</span>
               </div>
-              <div className="flex justify-between text-sm text-[var(--text2)]">
+              <div className="flex justify-between text-sm text-[var(--text3)]">
                 <span>Moms (25%):</span>
                 <span className="font-mono">{formatKr(calcResult.anbud * 0.25)}</span>
               </div>
-              <div className="flex justify-between font-extrabold text-lg pt-2 mt-2 border-t border-[var(--border)] text-[var(--blue-dk)]">
+              <div className="flex justify-between font-extrabold text-xl pt-3 mt-2 border-t-2 border-[var(--border)] text-[var(--blue-dk)]">
                 <span>Total inkl. moms:</span>
                 <span className="font-mono">{formatKr(calcResult.anbud * 1.25)}</span>
               </div>
@@ -173,14 +203,17 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, upda
           </div>
         </div>
 
-        <div className="mt-12 pt-6 border-t border-[var(--border)]">
+        <div className="mt-12 pt-6 border-t border-[var(--border)] print:hidden" data-html2canvas-ignore="true">
           <p className="text-xs text-[var(--text3)] text-center">
             Offerten är giltig i 30 dagar. Betalningsvillkor 30 dagar netto ifall inget annat överenskommits.<br/>
             Angivna mängder baseras på inlämnat underlag. Uppmätt verklig mängd kan leda till justering av priset.
           </p>
-          <div className="flex justify-center mt-6">
-            <button className="btn btn-primary" onClick={() => window.print()}>
-               <i className="fa-solid fa-print"></i> Skriv ut anbud
+          <div className="flex justify-center mt-6 gap-4">
+            <button className="btn btn-secondary border border-gray-300 bg-white shadow-sm hover:bg-gray-50 text-sm px-6 py-2 font-medium" onClick={handleExportExcel}>
+              <i className="fa-solid fa-file-excel text-green-600 mr-2"></i> Exportera Excel
+            </button>
+            <button className="btn btn-primary bg-[var(--blue)] text-white shadow-sm hover:bg-[var(--blue-dk)] text-sm px-6 py-2 font-medium" onClick={handleExportPdf}>
+               <i className="fa-solid fa-file-pdf mr-2"></i> Exportera PDF
             </button>
           </div>
         </div>

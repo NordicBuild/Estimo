@@ -4,6 +4,7 @@ import { IFCVManager } from '../IFCVManager';
 import { MeasurementData } from '../utils/MeasurementTool';
 import { AreaVolumeData } from '../utils/AreaVolumeTool';
 import { Byggdel } from '../../data';
+import { InspectorPortal } from '../../ui';
 import { calculateDefaultMoments } from '../../calculationHelpers';
 
 interface ViewerUIProps {
@@ -29,6 +30,23 @@ export function ViewerUI({ file, onSelect, onTakeoff, addParts }: ViewerUIProps)
   const [isAreaVolMeasuring, setIsAreaVolMeasuring] = useState(false);
   const [measurements, setMeasurements] = useState<MeasurementData[]>([]);
   const [areaMeasurements, setAreaMeasurements] = useState<AreaVolumeData[]>([]);
+
+  const [measurementGroups, setMeasurementGroups] = useState([
+    { id: "default", name: "Standard (Alla mängder)", color: "#ef4444", visible: true },
+    { id: "vvs", name: "VVS", color: "#3b82f6", visible: true },
+    { id: "el", name: "Elinstallation", color: "#eab308", visible: true },
+    { id: "konstruktion", name: "Konstruktion", color: "#22c55e", visible: true },
+  ]);
+  const [activeGroupId, setActiveGroupId] = useState<string>("default");
+  const [activeRightTab, setActiveRightTab] = useState<'properties' | 'measurements'>('properties');
+
+  useEffect(() => {
+     if (properties && activeRightTab !== 'properties') {
+         setActiveRightTab('properties');
+     } else if (!properties && measurements.length > 0 && activeRightTab !== 'measurements') {
+         setActiveRightTab('measurements');
+     }
+  }, [properties, measurements.length]);
   
   const labelsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const areaLabelsRef = useRef<Record<string, HTMLDivElement | null>>({});
@@ -42,6 +60,13 @@ export function ViewerUI({ file, onSelect, onTakeoff, addParts }: ViewerUIProps)
   useEffect(() => {
      areaMeasurementsRef.current = areaMeasurements;
   }, [areaMeasurements]);
+
+  useEffect(() => {
+     if (managerRef.current) {
+        managerRef.current.measureTool.activeGroupId = activeGroupId;
+        managerRef.current.measureTool.activeColor = measurementGroups.find(g => g.id === activeGroupId)?.color || '#ef4444';
+     }
+  }, [activeGroupId, measurementGroups]);
 
   const handleSmartTakeoff = async () => {
       if (managerRef.current && properties?.expressID !== undefined) {
@@ -358,6 +383,22 @@ export function ViewerUI({ file, onSelect, onTakeoff, addParts }: ViewerUIProps)
                         </div>
                     ))}
                 </div>
+                {/* Mätgrupper Section */}
+                <div className="p-4 border-t border-[#333] bg-[#222]">
+                    <h3 className="font-bold text-sm mb-2 text-white">Mätgrupper</h3>
+                    <div className="flex items-center gap-2 bg-[#1a1a1a] p-1.5 rounded-md border border-[#333]">
+                      <div className="w-3 h-3 rounded shadow-sm" style={{ backgroundColor: measurementGroups.find(g => g.id === activeGroupId)?.color || '#ccc' }}></div>
+                      <select
+                        className="flex-1 w-full text-xs font-medium bg-transparent border-none focus:ring-0 text-gray-200 cursor-pointer p-0"
+                        value={activeGroupId}
+                        onChange={(e) => setActiveGroupId(e.target.value)}
+                      >
+                        {measurementGroups.map((g) => (
+                          <option key={g.id} value={g.id} className="bg-[#222]">{g.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                </div>
             </div>
         )}
 
@@ -492,71 +533,164 @@ export function ViewerUI({ file, onSelect, onTakeoff, addParts }: ViewerUIProps)
             ))}
         </div>
 
-        {properties && (
-            <div className="w-80 h-full bg-[#222] border-l border-[#333] text-white overflow-y-auto flex flex-col shrink-0">
-                <div className="p-4 border-b border-[#333] bg-[#2a2a2a] sticky top-0 z-10">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <h3 className="font-bold text-sm">Egenskaper</h3>
-                            <p className="text-xs text-gray-400 mt-1">{properties.name}</p>
-                        </div>
-                        <div className="flex gap-1">
-                            <button 
-                                onClick={handleSmartTakeoff}
-                                className="px-2 py-1 text-xs rounded transition-colors bg-[var(--blue-lt)] hover:bg-[var(--blue)] text-[var(--blue-dk)] hover:text-white font-bold"
-                                title="Mängda element (Skapa kalkylposter)"
-                            >
-                                <i className="fa-solid fa-calculator"></i>
-                            </button>
-                            <button 
-                                onClick={toggleIsolate}
-                                className={`px-2 py-1 text-xs rounded transition-colors ${isolatedObject === properties.expressID ? 'bg-[var(--blue)] text-white' : 'bg-[#444] hover:bg-[#555] text-gray-200'}`}
-                                title="Isolera valt objekt"
-                            >
-                                <i className={`fa-solid ${isolatedObject === properties.expressID ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                            </button>
-                            <button 
-                                onClick={() => {
-                                    const blob = new Blob([JSON.stringify(properties, null, 2)], { type: 'application/json' });
-                                    const url = URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.href = url;
-                                    a.download = `ifc_props_${properties.expressID}.json`;
-                                    a.click();
-                                    URL.revokeObjectURL(url);
-                                }}
-                                className="px-2 py-1 text-xs rounded transition-colors bg-[#444] hover:bg-[#555] text-gray-200"
-                                title="Exportera till JSON"
-                            >
-                                <i className="fa-solid fa-download"></i>
-                            </button>
-                        </div>
-                    </div>
+        {(properties || measurements.length > 0) && (
+          <InspectorPortal>
+            <div className="w-full h-full bg-[#222] text-white overflow-hidden flex flex-col shrink-0">
+                <div className="flex border-b border-[#333] bg-[#2a2a2a] shrink-0 text-sm">
+                    {properties && (
+                        <button 
+                            className={`flex-1 py-3 font-semibold ${activeRightTab === 'properties' ? 'border-b-2 border-[var(--blue)] text-white' : 'text-gray-400 hover:text-gray-200'}`} 
+                            style={{borderColor: activeRightTab === 'properties' ? 'var(--blue)' : 'transparent'}}
+                            onClick={() => setActiveRightTab('properties')}
+                        >
+                            Egenskaper
+                        </button>
+                    )}
+                    {(measurements.length > 0) && (
+                        <button 
+                            className={`flex-1 py-3 font-semibold ${activeRightTab === 'measurements' ? 'border-b-2 border-[var(--blue)] text-white' : 'text-gray-400 hover:text-gray-200'}`} 
+                            style={{borderColor: activeRightTab === 'measurements' ? 'var(--blue)' : 'transparent'}}
+                            onClick={() => setActiveRightTab('measurements')}
+                        >
+                            Mängder
+                        </button>
+                    )}
                 </div>
-                <div className="p-4 text-xs font-mono flex-1">
-                    <div className="mb-4">
-                        <strong className="text-[var(--blue-lt)] block mb-1">Globalt ID:</strong>
-                        <span className="text-gray-300">{properties.properties?.GlobalId?.value || 'N/A'}</span>
-                    </div>
-                    {properties.psets?.map((pset: any, idx: number) => (
-                        <div key={idx} className="mb-4 bg-[#2a2a2a] p-2 rounded">
-                            <strong className="text-[var(--blue-lt)] block mb-2">{pset.Name?.value || 'Pset'}</strong>
-                            <table className="w-full">
-                                <tbody>
-                                  {(pset.HasProperties || pset.Quantities || []).map((prop: any, pIdx: number) => (
-                                      <tr key={pIdx} className="border-b border-[#333] last:border-0">
-                                          <td className="py-1 text-gray-400">{prop.Name?.value}</td>
-                                          <td className="py-1 text-right text-gray-200">
-                                              {prop.NominalValue?.value || prop.VolumeValue?.value || prop.AreaValue?.value || prop.LengthValue?.value || prop.MassValue?.value || prop.WeightValue?.value || '-'}
-                                          </td>
-                                      </tr>
-                                  ))}
-                                </tbody>
-                            </table>
+
+                <div className="flex-1 overflow-y-auto">
+                    {activeRightTab === 'properties' && properties ? (
+                        <>
+                            <div className="p-4 border-b border-[#333] bg-[#2a2a2a] sticky top-0 z-10">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-xs text-gray-400 mt-1">{properties.name}</p>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <button 
+                                            onClick={handleSmartTakeoff}
+                                            className="px-2 py-1 text-xs rounded transition-colors bg-[var(--blue-lt)] hover:bg-[var(--blue)] text-[var(--blue-dk)] hover:text-white font-bold"
+                                            title="Mängda element (Skapa kalkylposter)"
+                                        >
+                                            <i className="fa-solid fa-calculator"></i>
+                                        </button>
+                                        <button 
+                                            onClick={toggleIsolate}
+                                            className={`px-2 py-1 text-xs rounded transition-colors ${isolatedObject === properties.expressID ? 'bg-[var(--blue)] text-white' : 'bg-[#444] hover:bg-[#555] text-gray-200'}`}
+                                            title="Isolera valt objekt"
+                                        >
+                                            <i className={`fa-solid ${isolatedObject === properties.expressID ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                const blob = new Blob([JSON.stringify(properties, null, 2)], { type: 'application/json' });
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url;
+                                                a.download = `ifc_props_${properties.expressID}.json`;
+                                                a.click();
+                                                URL.revokeObjectURL(url);
+                                            }}
+                                            className="px-2 py-1 text-xs rounded transition-colors bg-[#444] hover:bg-[#555] text-gray-200"
+                                            title="Exportera till JSON"
+                                        >
+                                            <i className="fa-solid fa-download"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-4 text-xs font-mono">
+                                <div className="mb-4">
+                                    <strong className="text-[var(--blue-lt)] block mb-1">Globalt ID:</strong>
+                                    <span className="text-gray-300">{properties.properties?.GlobalId?.value || 'N/A'}</span>
+                                </div>
+                                {properties.psets?.map((pset: any, idx: number) => (
+                                    <div key={idx} className="mb-4 bg-[#2a2a2a] p-2 rounded">
+                                        <strong className="text-[var(--blue-lt)] block mb-2">{pset.Name?.value || 'Pset'}</strong>
+                                        <table className="w-full">
+                                            <tbody>
+                                              {(pset.HasProperties || pset.Quantities || []).map((prop: any, pIdx: number) => (
+                                                  <tr key={pIdx} className="border-b border-[#333] last:border-0">
+                                                      <td className="py-1 text-gray-400">{prop.Name?.value}</td>
+                                                      <td className="py-1 text-right text-gray-200">
+                                                          {prop.NominalValue?.value || prop.VolumeValue?.value || prop.AreaValue?.value || prop.LengthValue?.value || prop.MassValue?.value || prop.WeightValue?.value || '-'}
+                                                      </td>
+                                                  </tr>
+                                              ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-4">
+                            <ul className="space-y-4">
+                                {measurementGroups.map((group) => {
+                                    const groupMeasurements = measurements.filter((m) => m.groupId === group.id || (!m.groupId && group.id === 'default'));
+                                    if (groupMeasurements.length === 0) return null;
+
+                                    const summary = groupMeasurements.reduce((acc, m) => {
+                                        const unit = m.type === "area" ? "m²" : m.type === "volume" ? "m³" : m.type === "angle" ? "°" : "m";
+                                        const key = m.type;
+                                        if (!acc[key]) acc[key] = { type: m.type, total: 0, unit, items: [] };
+                                        acc[key].items.push(m);
+                                        const val = m.type === 'distance' ? m.distance : m.type === 'area' ? m.area : m.type === 'volume' ? m.volume : m.angle;
+                                        acc[key].total += val || 0;
+                                        return acc;
+                                    }, {} as Record<string, { type: string; total: number; unit: string; items: MeasurementData[] }>);
+
+                                    return (
+                                        <li key={group.id} className="bg-[#2a2a2a] rounded-lg border border-[#333] overflow-hidden shadow-sm">
+                                            <div className="bg-[#1a1a1a] p-2 flex items-center justify-between border-b border-[#333]">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-sm shadow-sm" style={{ backgroundColor: group.color }}></div>
+                                                    <span className="font-bold text-sm text-gray-200">{group.name}</span>
+                                                </div>
+                                                <span className="text-xs text-gray-400 font-medium">{groupMeasurements.length} st</span>
+                                            </div>
+                                            <div className="p-2 space-y-3">
+                                                {Object.values(summary).map(sum => (
+                                                    <div key={sum.type} className="space-y-1">
+                                                        <div className="flex justify-between items-center text-xs font-semibold text-gray-400 uppercase mb-1">
+                                                            <span>{sum.type === 'area' ? 'Yta' : sum.type === 'volume' ? 'Volym' : sum.type === 'angle' ? 'Vinkel' : 'Längd'}</span>
+                                                            <span className="text-gray-200 bg-[#333] px-1.5 py-0.5 rounded">{sum.total.toFixed(2)} {sum.unit}</span>
+                                                        </div>
+                                                        <ul className="space-y-1 pl-1 border-l-2 border-[#444] ml-1">
+                                                            {sum.items.map(m => {
+                                                                const val = m.type === 'distance' ? m.distance : m.type === 'area' ? m.area : m.type === 'volume' ? m.volume : m.angle;
+                                                                return (
+                                                                    <li key={m.id} className="flex justify-between items-center p-1.5 rounded hover:bg-[#333] transition-colors group">
+                                                                        <div className="flex items-center gap-2">
+                                                                          <span className="text-xs text-gray-400 font-medium font-mono">#{m.id.substring(m.id.length - 4)}</span>
+                                                                          <span className="text-xs font-medium text-gray-300">{(val || 0).toFixed(2)} {sum.unit}</span>
+                                                                        </div>
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                if (managerRef.current) {
+                                                                                    managerRef.current.measureTool.removeMeasurement(m.id);
+                                                                                }
+                                                                            }}
+                                                                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:bg-red-400/20 px-1.5 py-0.5 rounded transition-all"
+                                                                            title="Ta bort"
+                                                                        >
+                                                                            <i className="fa-solid fa-trash-can text-[10px]"></i>
+                                                                        </button>
+                                                                    </li>
+                                                                );
+                                                            })}
+                                                        </ul>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
                         </div>
-                    ))}
+                    )}
                 </div>
             </div>
+          </InspectorPortal>
         )}
     </div>
   );

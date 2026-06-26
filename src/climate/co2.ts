@@ -85,12 +85,15 @@ export function computeByggdelCo2(byggdel: Byggdel, materialsMap: Map<string, Ma
     if (m.active === false) continue;
     const mat = materialsMap.get(m.material);
     if (!mat || !mat.co2PerUnit) continue;
-
-    const qty = (m.amount || 0) * bQty;
-    const spill = 1 + (mat.spill || 0) / 100;
     
-    const totalMatQty = qty * spill;
-    totalCo2 += totalMatQty * mat.co2PerUnit;
+    totalCo2 += computeRowCo2(m.amount, bQty, mat);
   }
   return totalCo2;
+}
+
+export function computeRowCo2(amount: number = 0, bQty: number = 1, mat: Material): number {
+  if (!mat.co2PerUnit) return 0;
+  const qty = amount * bQty;
+  const spill = 1 + (mat.spill || 0) / 100;
+  return qty * spill * mat.co2PerUnit;
 }
