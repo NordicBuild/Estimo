@@ -102,7 +102,53 @@ CREATE TABLE IF NOT EXISTS project_byggdelar (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. App State (Key-Value Store)
+-- 8. Offerter (Anbud / Inköp)
+CREATE TABLE IF NOT EXISTS leverantor_offert (
+    id UUID PRIMARY KEY,
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    anbud_id UUID NULL,
+    leverantor TEXT,
+    typ TEXT CHECK (typ IN ('ue', 'leverantor')),
+    valuta TEXT DEFAULT 'SEK',
+    status TEXT DEFAULT 'inkommen',
+    poster JSONB,
+    fast_tillagg NUMERIC DEFAULT 0,
+    giltig_till DATE NULL,
+    "not" TEXT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_leverantor_offert_project_id ON leverantor_offert(project_id);
+CREATE INDEX IF NOT EXISTS idx_leverantor_offert_anbud_id ON leverantor_offert(anbud_id);
+
+-- 9. Byggdel Recept (Receptbibliotek)
+CREATE TABLE IF NOT EXISTS byggdel_recept (
+    id UUID PRIMARY KEY,
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    kod TEXT,
+    namn TEXT,
+    enhet TEXT,
+    byggdel_type TEXT,
+    byggdelsgrupp TEXT,
+    data JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Projekt Utfall (EAC)
+CREATE TABLE IF NOT EXISTS projekt_utfall (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    line_key TEXT NOT NULL,
+    ac NUMERIC,
+    fardiggrad NUMERIC,
+    manuell_eac NUMERIC,
+    noterat_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(project_id, line_key)
+);
+
+-- 11. App State (Key-Value Store)
 CREATE TABLE IF NOT EXISTS public.app_state (
     id TEXT PRIMARY KEY,
     data JSONB NOT NULL,
@@ -118,6 +164,9 @@ ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE arbetsmoments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_byggdelar ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leverantor_offert ENABLE ROW LEVEL SECURITY;
+ALTER TABLE byggdel_recept ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projekt_utfall ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
 
 -- Här är det viktigt att skriva policys så att man bara ser sitt eget företags data:
@@ -125,6 +174,15 @@ CREATE POLICY "Se sitt eget företags data" ON companies
     FOR ALL USING (id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
 
 CREATE POLICY "Se projekt baserat på company" ON projects
+    FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+CREATE POLICY "Se offerter baserat på company" ON leverantor_offert
+    FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+CREATE POLICY "Se recept baserat på company" ON byggdel_recept
+    FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+CREATE POLICY "Se utfall baserat på company" ON projekt_utfall
     FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
 
 -- App State policy (Full tillgång för alla inloggade just nu, då ids i koden använder dataSpaceId)

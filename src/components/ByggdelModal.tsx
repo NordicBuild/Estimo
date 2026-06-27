@@ -19,6 +19,7 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
   const [mType, setMType] = useState('24.1_Fundament');
   const [mGroup, setMGroup] = useState('');
   const [mObjFactor, setMObjFactor] = useState<number | string>(1.0);
+  const [mRiskLevel, setMRiskLevel] = useState<'låg' | 'medel' | 'hög'>('medel');
   const [mLength, setMLength] = useState<number | string>(1.0);
   const [mWidth, setMWidth] = useState<number | string>(1.0);
   const [mHeight, setMHeight] = useState<number | string>(0.2);
@@ -48,6 +49,7 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
         setMName(b.name);
         setMType(b.type || '24.1_Fundament');
         setMGroup(b.group || '');
+        setMRiskLevel(b.riskLevel || 'medel');
         setMObjFactor(b.objFactor ?? 1.0);
         setMCount(b.qty);
         setMLength(b.dimensions?.length ?? 1.0);
@@ -72,6 +74,7 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
       } else {
         setMName('');
         setMGroup('');
+        setMRiskLevel('medel');
         setMObjFactor(1.0);
         setMCount(1);
         setMArea(10.0);
@@ -120,6 +123,7 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
       name: mName,
       type: mType,
       group: mGroup,
+      riskLevel: mRiskLevel,
       revision: initialData ? initialData.revision : undefined,
       qty: modalCalcQty,
       objFactor: sn(mObjFactor),
@@ -184,6 +188,18 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
                     value={mGroup}
                     onChange={e => setMGroup(e.target.value)}
                   />
+                </div>
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Säkerhet (Risk)</label>
+                  <select 
+                    className="w-full border border-[var(--border)] rounded-md px-3 py-1.5 text-sm focus:border-[var(--blue)] outline-none bg-white"
+                    value={mRiskLevel}
+                    onChange={e => setMRiskLevel(e.target.value as 'låg' | 'medel' | 'hög')}
+                  >
+                    <option value="låg">Låg (±5%)</option>
+                    <option value="medel">Medel (±15%)</option>
+                    <option value="hög">Hög (±30%)</option>
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">

@@ -48,7 +48,8 @@ export function computeCalculation(
   trRate = 0,
   vMatP = 0,
   vArbP = 0,
-  timeFactor = 1.0
+  timeFactor = 1.0,
+  companyTidsfaktorer: Record<string, number> = {}
 ): CalculationResult {
   let totArb = 0, totMat = 0, totTim = 0, totVol = 0, totArea = 0;
   let totVMatKr = 0, totVArbKr = 0;
@@ -71,10 +72,17 @@ export function computeCalculation(
       const tid = m.timeUnit || 0;
       const spill = 1 + (mat.spill || 0) / 100;
       
-      const price = m.unitPrice ?? mat.price;
-      const netMat = qty * price * spill;
+      // If the part is bought, override the price logic and set time to 0
+      const isBought = b.isBought === true;
+      
+      const price = isBought ? 0 : (m.unitPrice ?? mat.price);
+      const netMat = isBought ? 0 : (qty * price * spill);
       // Apply timeFactor and objFactor here
-      const hrs = qty * tid * tf.faktor * currentTF * (b.objFactor || 1.0);
+      const momentKey = `${b.type}::${m.label}`;
+      const baseFaktor = tf.faktor;
+      const finalTfFaktor = companyTidsfaktorer[momentKey] ?? baseFaktor;
+      
+      const hrs = isBought ? 0 : (qty * tid * finalTfFaktor * currentTF * (b.objFactor || 1.0));
       const netArb = hrs * tRate;
       
       if (mat.unit === 'm³') bVol += qty;
@@ -107,6 +115,10 @@ export function computeCalculation(
 
       return { ...m, hrs, cost: netArb + netMat, matNetto: netMat, arbNetto: netArb, matUnit: mat.unit };
     });
+
+    if (b.isBought) {
+      bMat += bQty * (b.boughtPrice || 0); // Add it to bMat so totMat is correct
+    }
 
     const bCost = bMat + bArb;
     const unit = TYPE_UNIT[b.type] || 'st';
@@ -210,9 +222,10 @@ export function useCalculation(
   trRate = 0,
   vMatP = 0,
   vArbP = 0,
-  timeFactor = 1.0
+  timeFactor = 1.0,
+  companyTidsfaktorer: Record<string, number> = {}
 ): CalculationResult {
   return useMemo(() => computeCalculation(
-    byggdelar, materials, fOrg, fForbr, tRate, mRate, trRate, vMatP, vArbP, timeFactor
-  ), [byggdelar, materials, fOrg, fForbr, tRate, mRate, trRate, vMatP, vArbP, timeFactor]);
+    byggdelar, materials, fOrg, fForbr, tRate, mRate, trRate, vMatP, vArbP, timeFactor, companyTidsfaktorer
+  ), [byggdelar, materials, fOrg, fForbr, tRate, mRate, trRate, vMatP, vArbP, timeFactor, companyTidsfaktorer]);
 }

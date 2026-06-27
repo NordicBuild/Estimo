@@ -6,8 +6,6 @@ interface WorkspaceActionsProps {
   handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleExportExcel: () => void;
   downloadTemplate: () => void;
-  inspectorOpen: boolean;
-  setInspectorOpen: (open: boolean) => void;
 }
 
 export function WorkspaceActions({
@@ -16,8 +14,6 @@ export function WorkspaceActions({
   handleImportExcel,
   handleExportExcel,
   downloadTemplate,
-  inspectorOpen,
-  setInspectorOpen,
 }: WorkspaceActionsProps) {
   return (
     <div className="bg-surface border-b border-outline-variant px-4 md:px-8 py-3 flex flex-wrap gap-3 items-center justify-between text-sm z-40 shrink-0 print:hidden">
@@ -51,15 +47,6 @@ export function WorkspaceActions({
           onChange={handleImportExcel} 
         />
       </div>
-      
-      <button 
-        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center transition-colors ${inspectorOpen ? 'bg-primary-container text-on-primary-container border-primary-container' : 'bg-surface text-on-surface border-outline-variant hover:bg-surface-container-low'}`}
-        onClick={() => setInspectorOpen(!inspectorOpen)}
-        title="Växla Inspektorpanel"
-      >
-        <span className="material-symbols-outlined text-[18px] mr-1">{inspectorOpen ? 'right_panel_close' : 'right_panel_open'}</span>
-        Inspektor
-      </button>
     </div>
   );
 }
@@ -77,10 +64,10 @@ interface WorkspaceNavProps {
 }
 
 export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: WorkspaceNavProps) {
-  const kalkylTabs = ['kalkyl', 'material', 'arbete', 'analys', 'sammanstalln', 'slutsida', 'planering', 'anbud'];
+  const kalkylTabs = ['kalkyl', 'material', 'arbete', 'analys', 'sammanstalln', 'slutsida', 'planering', 'anbud', 'inkop', 'prognos'];
   const isKalkylActive = kalkylTabs.includes(activeTab);
   
-  const resursTabs = ['arbetare', 'fastigheter', 'maskiner', 'bilar', 'ovrigt'];
+  const resursTabs = ['arbetare', 'fastigheter', 'maskiner', 'bilar', 'ovrigt', 'receptbibliotek'];
   const isResursActive = resursTabs.includes(activeTab);
 
   const projektunderlagTabs = ['dokument_ffu', 'dokument_modell', 'dokument_kommunikation', 'pdf', 'bim'];
@@ -116,6 +103,8 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
               { id: 'slutsida', label: 'Slutsida', icon: 'receipt_long' },
               { id: 'planering', label: 'Planering', icon: 'calendar_month' },
               { id: 'anbud', label: 'Kundanbud', icon: 'contract' },
+              { id: 'inkop', label: 'Inköp', icon: 'shopping_cart' },
+              { id: 'prognos', label: 'Prognos / EAC', icon: 'trending_up' },
               { id: 'material', label: 'Material', icon: 'inventory_2' },
               { id: 'arbete', label: 'Arbetsmoment', icon: 'engineering' },
             ];
@@ -127,6 +116,7 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
               { id: 'maskiner', label: 'Maskiner', icon: 'precision_manufacturing' },
               { id: 'bilar', label: 'Bilar', icon: 'directions_car' },
               { id: 'ovrigt', label: 'Övrigt', icon: 'category' },
+              { id: 'receptbibliotek', label: 'Receptbibliotek', icon: 'menu_book' },
             ];
           } else if (tab.id === 'dokument_ffu') {
             isActive = isProjektunderlagActive;

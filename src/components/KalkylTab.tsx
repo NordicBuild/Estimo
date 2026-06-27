@@ -2,9 +2,13 @@ import { Fragment, useState, useEffect, useMemo } from 'react';
 import { Byggdel, Material, INITIAL_TIDSFAKTORER, ProjectInfo, CompanyInfo } from '../data';
 import { CalculationResult } from '../useCalculation';
 import { computeByggdelCo2 } from '../climate/co2';
-import { Button, IconButton, NumberInput, Input, Select, Modal, Badge, Toolbar, InspectorPortal } from '../ui';
+import { Button, IconButton, NumberInput, Input, Select, Modal, Badge, Toolbar } from '../ui';
 import { UnifiedGrid } from '../kalkyl/UnifiedGrid';
+import { summeraRisk, RiskRad } from '../kalkyl/kalkylRisk';
 import { exportExcel, exportPdf } from '../exportUtils';
+import { listRecept, DbRecept } from '../recept/api';
+import { expandRecept, receptStyckkostnad, receptCo2PerEnhet } from '../recept/recept';
+import { calculateDefaultMoments } from '../calculationHelpers';
 
 interface Props {
   byggdelar: Byggdel[];
@@ -12,6 +16,8 @@ interface Props {
   materials: Material[];
   projectInfo?: ProjectInfo;
   companyInfo?: CompanyInfo;
+  companyId?: string;
+  addParts?: (parts: Omit<Byggdel, 'id'>[]) => void;
   settings?: any;
   updateSettings?: (key: string, val: number) => void;
   byggdelTemplates?: any[];
@@ -78,9 +84,18 @@ const LocalNumberInput = ({ initialValue, onChange }: { initialValue: number, on
   );
 };
 
-export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, companyInfo, settings, updateSettings, byggdelTemplates, addTemplate, deleteTemplate, addPartFromTemplate, toggleByggdel, toggleAllByggdelar, reorderByggdelar, removePart, clonePart, togglePartActive, toggleTypeActive, cloneType, openModal, updateMoment, duplicateMoment, updateMaterialPrice, addMoment, removeMoment, updatePartQty, updatePartAntal, removeMultipleParts, updateMultipleParts }: Props) {
+export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, companyInfo, companyId, addParts, settings, updateSettings, byggdelTemplates, addTemplate, deleteTemplate, addPartFromTemplate, toggleByggdel, toggleAllByggdelar, reorderByggdelar, removePart, clonePart, togglePartActive, toggleTypeActive, cloneType, openModal, updateMoment, duplicateMoment, updateMaterialPrice, addMoment, removeMoment, updatePartQty, updatePartAntal, removeMultipleParts, updateMultipleParts }: Props) {
   const { parts, anbud, tg1, totVol, totTim, projNetto } = calcResult;
   const formatKr = (v: number) => Math.round(v).toLocaleString('sv-SE') + ' kr';
+
+  const riskResult = useMemo(() => {
+    const rader: RiskRad[] = parts.map(p => ({
+      key: p.id.toString(),
+      bas: p.costNetto,
+      sakerhet: p.riskLevel || 'medel'
+    }));
+    return summeraRisk(rader);
+  }, [parts]);
 
   const [filterType, setFilterType] = useState('');
   const [selectedPartId, setSelectedPartId] = useState<number | null>(null);
@@ -89,6 +104,50 @@ export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, compa
   const [showGroupPrompt, setShowGroupPrompt] = useState(false);
   const [newGroupStr, setNewGroupStr] = useState('');
   const [showInactiveMoments, setShowInactiveMoments] = useState(false);
+
+  const [receptList, setReceptList] = useState<DbRecept[]>([]);
+  const [showReceptModal, setShowReceptModal] = useState(false);
+  const [selectedRecept, setSelectedRecept] = useState<DbRecept | null>(null);
+  const [receptMangd, setReceptMangd] = useState<number>(1);
+
+  useEffect(() => {
+    if (companyId) {
+      listRecept(companyId).then(setReceptList).catch(console.error);
+    }
+  }, [companyId]);
+
+  const handleInfogaRecept = () => {
+    if (!selectedRecept || !addParts) return;
+    try {
+      const receptData = { ...selectedRecept.data, mangd: receptMangd };
+      const draft = expandRecept(receptData);
+      
+      const newPart: Omit<Byggdel, 'id'> = {
+        type: draft.type as any,
+        name: selectedRecept.namn,
+        antal: 1,
+        qty: draft.qty,
+        comment: '',
+        active: true,
+        moments: []
+      };
+
+      const moments = calculateDefaultMoments(newPart.type, {});
+      for (const m of moments) {
+        if (draft.materialOverrides[m.label]) {
+           (m as any).unitPrice = draft.materialOverrides[m.label].unitPrice;
+           (m as any).co2PerUnit = draft.materialOverrides[m.label].co2PerEnhet;
+        }
+      }
+      newPart.moments = moments;
+      addParts([newPart]);
+      setShowReceptModal(false);
+      setSelectedRecept(null);
+      setReceptMangd(1);
+    } catch (e: any) {
+      alert("Fel vid infogning: " + e.message);
+    }
+  };
 
   const handleExportExcel = () => {
     if (projectInfo && companyInfo) {
@@ -178,172 +237,204 @@ export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, compa
 
   return (
     <div className="flex flex-col h-full bg-[#f3f4f6]">
-      <InspectorPortal>
-        <div className="p-4 flex flex-col gap-4 h-full bg-white">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-on-surface-variant mb-2 border-b border-gray-200 pb-2">Anbudsremsan</h2>
-          
-          <div className="flex flex-col gap-3 font-mono text-sm">
-            <div className="flex justify-between items-center py-1">
-              <span className="text-gray-500 uppercase text-xs">Självkostnad</span>
-              <span className="font-semibold text-gray-800">{formatKr(projNetto)}</span>
-            </div>
-            
-            <div className="flex justify-between items-center py-1">
-              <span className="text-gray-500 uppercase text-xs">Omkostnader (%)</span>
-              <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                <input 
-                  type="number" 
-                  className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
-                  value={settings?.fOrg ? Math.round(settings.fOrg * 100) : 0}
-                  onChange={(e) => updateSettings?.('fOrg', Number(e.target.value) / 100)}
-                />
-                <span className="text-gray-400">%</span>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center py-1">
-              <span className="text-gray-500 uppercase text-xs">Vinst Mat (%)</span>
-              <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                <input 
-                  type="number" 
-                  className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
-                  value={settings?.vMatP ? Math.round(settings.vMatP * 100) : 0}
-                  onChange={(e) => updateSettings?.('vMatP', Number(e.target.value) / 100)}
-                />
-                <span className="text-gray-400">%</span>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center py-1">
-              <span className="text-gray-500 uppercase text-xs">Vinst Arb (%)</span>
-              <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                <input 
-                  type="number" 
-                  className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
-                  value={settings?.vArbP ? Math.round(settings.vArbP * 100) : 0}
-                  onChange={(e) => updateSettings?.('vArbP', Number(e.target.value) / 100)}
-                />
-                <span className="text-gray-400">%</span>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center py-1 border-t border-gray-200 pt-3 mt-1">
-              <span className="text-gray-500 uppercase text-xs">Täckningsgrad</span>
-              <span className="font-semibold text-[var(--green)]">{tg1.toFixed(1)}%</span>
-            </div>
-
-            <div className="flex justify-between items-center py-2 border-b-2 border-primary mb-2">
-              <span className="font-bold uppercase text-xs text-primary">Anbudssumma</span>
-              <span className="font-bold text-primary text-xl tracking-tight">{formatKr(anbud)}</span>
-            </div>
-
-            <div className="flex justify-between items-center py-1 mt-4">
-              <span className="text-gray-500 uppercase text-xs">Totalt arbete</span>
-              <span className="font-semibold text-gray-800">{Math.round(totTim)} h</span>
-            </div>
-
-            <div className="flex justify-between items-center py-1">
-              <span className="text-gray-500 uppercase text-xs">Total CO2e</span>
-              <span className="font-semibold text-gray-800">{Math.round(calcResult.co2.total)} kg</span>
-            </div>
-
-            <div className="flex justify-between items-center py-1">
-              <span className="text-gray-500 uppercase text-xs flex items-center gap-2">
-                BTA (m²)
-              </span>
-              <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                <input 
-                  type="number" 
-                  className="w-16 text-right bg-transparent outline-none focus:bg-gray-50"
-                  value={settings?.bta || ''}
-                  onChange={(e) => updateSettings?.('bta', Number(e.target.value))}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
-              <span className="text-gray-500 uppercase text-xs">CO2e / m² BTA</span>
-              <span className="font-semibold text-gray-800">{(settings?.bta && settings.bta > 0) ? (calcResult.co2.total / settings.bta).toFixed(1) : '-'} kg</span>
-            </div>
-            
-            <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-200">
-              <button className="btn btn-secondary border border-gray-300 bg-white shadow-sm hover:bg-gray-50 text-xs px-2 py-1.5 font-medium flex justify-center items-center" onClick={handleExportExcel}>
-                <i className="fa-solid fa-file-excel text-green-600 mr-2"></i> Exportera Kalkyl (Excel)
-              </button>
-              <button className="btn btn-primary bg-[var(--blue)] text-white shadow-sm hover:bg-[var(--blue-dk)] text-xs px-2 py-1.5 font-medium flex justify-center items-center" onClick={handleExportPdf}>
-                <i className="fa-solid fa-file-pdf mr-2"></i> Exportera Anbud (PDF)
-              </button>
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="bg-white border-b border-gray-300 px-4 py-2 flex items-center justify-between shrink-0">
+            <span className="font-semibold text-sm text-gray-700">WBS Kalkyl</span>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-xs text-gray-700 font-semibold cursor-pointer select-none border-r border-gray-300 pr-3 mr-1">
+                 <input 
+                    type="checkbox" 
+                    checked={showInactiveMoments} 
+                    onChange={e => setShowInactiveMoments(e.target.checked)}
+                    className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 cursor-pointer"
+                 />
+                 Visa avaktiverade moment
+              </label>
+              
+              {byggdelTemplates && byggdelTemplates.length > 0 && (
+                <select 
+                  className="border border-blue-300 bg-blue-50 text-blue-700 rounded px-2 py-1 text-xs outline-none font-medium cursor-pointer"
+                  value=""
+                  onChange={e => {
+                    const id = Number(e.target.value);
+                    const tpl = byggdelTemplates.find(t => t.id === id);
+                    if (tpl && addPartFromTemplate) {
+                      addPartFromTemplate(tpl.data);
+                    }
+                  }}
+                >
+                  <option value="" disabled>+ Infoga från mall...</option>
+                  {byggdelTemplates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              )}
+              {receptList.length > 0 && (
+                <button
+                  onClick={() => setShowReceptModal(true)}
+                  className="border border-green-300 bg-green-50 text-green-700 rounded px-2 py-1 text-xs outline-none font-medium cursor-pointer hover:bg-green-100"
+                >
+                  + Infoga från recept...
+                </button>
+              )}
+              <select 
+                className="border border-gray-300 rounded px-2 py-1 text-xs outline-none bg-gray-50"
+                value={filterType}
+                onChange={e => setFilterType(e.target.value)}
+              >
+                <option value="">Alla typer (WBS)</option>
+                {uniqueTypes.map((type, tIdx) => {
+                  const typeLabel = INITIAL_TIDSFAKTORER.find((t: any) => t.type === type)?.label || type;
+                  return <option key={`type-${tIdx}`} value={type}>{typeLabel}</option>;
+                })}
+              </select>
+              <Button variant="ghost" onClick={() => toggleAllByggdelar(true)} className="text-xs px-2" icon="unfold_less">Fäll ihop</Button>
+              <Button variant="ghost" onClick={() => toggleAllByggdelar(false)} className="text-xs px-2" icon="unfold_more">Fäll ut</Button>
             </div>
           </div>
-        </div>
-      </InspectorPortal>
 
-      <div className="bg-white border-b border-gray-300 px-4 py-2 flex items-center justify-between shrink-0">
-        <span className="font-semibold text-sm text-gray-700">WBS Kalkyl</span>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-gray-700 font-semibold cursor-pointer select-none border-r border-gray-300 pr-3 mr-1">
-             <input 
-                type="checkbox" 
-                checked={showInactiveMoments} 
-                onChange={e => setShowInactiveMoments(e.target.checked)}
-                className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 cursor-pointer"
-             />
-             Visa avaktiverade moment
-          </label>
-          
-          {byggdelTemplates && byggdelTemplates.length > 0 && (
-            <select 
-              className="border border-blue-300 bg-blue-50 text-blue-700 rounded px-2 py-1 text-xs outline-none font-medium cursor-pointer"
-              value=""
-              onChange={e => {
-                const id = Number(e.target.value);
-                const tpl = byggdelTemplates.find(t => t.id === id);
-                if (tpl && addPartFromTemplate) {
-                  addPartFromTemplate(tpl.data);
-                }
-              }}
-            >
-              <option value="" disabled>+ Infoga från mall...</option>
-              {byggdelTemplates.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          )}
-          <select 
-            className="border border-gray-300 rounded px-2 py-1 text-xs outline-none bg-gray-50"
-            value={filterType}
-            onChange={e => setFilterType(e.target.value)}
-          >
-            <option value="">Alla typer (WBS)</option>
-            {uniqueTypes.map((type, tIdx) => {
-              const typeLabel = INITIAL_TIDSFAKTORER.find((t: any) => t.type === type)?.label || type;
-              return <option key={`type-${tIdx}`} value={type}>{typeLabel}</option>;
-            })}
-          </select>
-          <Button variant="ghost" onClick={() => toggleAllByggdelar(true)} className="text-xs px-2" icon="unfold_less">Fäll ihop</Button>
-          <Button variant="ghost" onClick={() => toggleAllByggdelar(false)} className="text-xs px-2" icon="unfold_more">Fäll ut</Button>
+          <div className="flex flex-1 overflow-hidden min-h-0 bg-white">
+            <UnifiedGrid
+              parts={filteredParts}
+              materialsMap={materialsMap}
+              materials={materials}
+              showInactiveMoments={showInactiveMoments}
+              variables={projectInfo.variables}
+              toggleByggdel={toggleByggdel}
+              togglePartActive={togglePartActive}
+              clonePart={clonePart}
+              removePart={removePart}
+              openModal={openModal}
+              updatePartQty={updatePartQty}
+              updatePartAntal={updatePartAntal}
+              updateMoment={updateMoment}
+              duplicateMoment={duplicateMoment}
+              removeMoment={removeMoment}
+              updateMaterialPrice={updateMaterialPrice}
+              addMoment={addMoment}
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="flex flex-1 overflow-hidden min-h-0 bg-white">
-        <UnifiedGrid
-          parts={filteredParts}
-          materialsMap={materialsMap}
-          materials={materials}
-          showInactiveMoments={showInactiveMoments}
-          toggleByggdel={toggleByggdel}
-          togglePartActive={togglePartActive}
-          clonePart={clonePart}
-          removePart={removePart}
-          openModal={openModal}
-          updatePartQty={updatePartQty}
-          updatePartAntal={updatePartAntal}
-          updateMoment={updateMoment}
-          duplicateMoment={duplicateMoment}
-          removeMoment={removeMoment}
-          updateMaterialPrice={updateMaterialPrice}
-          addMoment={addMoment}
-        />
+        <aside className="w-full lg:w-80 shrink-0 border-t lg:border-t-0 lg:border-l border-gray-200 bg-white overflow-y-auto">
+          <div className="p-4 flex flex-col gap-4 h-full bg-white">
+            <h2 className="text-h3 font-bold uppercase tracking-wider text-on-surface-variant mb-2 border-b border-gray-200 pb-2">Anbudsremsan</h2>
+            
+            <div className="flex flex-col gap-3 font-mono text-sm">
+              <div className="flex justify-between items-center py-1">
+                <span className="text-caption text-gray-500 uppercase">Självkostnad</span>
+                <span className="text-body num font-semibold text-gray-800">{formatKr(projNetto)}</span>
+              </div>
+              
+              <div className="flex justify-between items-center py-1">
+                <span className="text-caption text-gray-500 uppercase">Omkostnader (%)</span>
+                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                  <input 
+                    type="number" 
+                    className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
+                    value={settings?.fOrg ? Math.round(settings.fOrg * 100) : 0}
+                    onChange={(e) => updateSettings?.('fOrg', Number(e.target.value) / 100)}
+                  />
+                  <span className="text-gray-400">%</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="text-caption text-gray-500 uppercase">Vinst Mat (%)</span>
+                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                  <input 
+                    type="number" 
+                    className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
+                    value={settings?.vMatP ? Math.round(settings.vMatP * 100) : 0}
+                    onChange={(e) => updateSettings?.('vMatP', Number(e.target.value) / 100)}
+                  />
+                  <span className="text-gray-400">%</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="text-caption text-gray-500 uppercase">Vinst Arb (%)</span>
+                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                  <input 
+                    type="number" 
+                    className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
+                    value={settings?.vArbP ? Math.round(settings.vArbP * 100) : 0}
+                    onChange={(e) => updateSettings?.('vArbP', Number(e.target.value) / 100)}
+                  />
+                  <span className="text-gray-400">%</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-t border-gray-200 pt-3 mt-1">
+                <span className="text-caption text-gray-500 uppercase">Täckningsgrad</span>
+                <span className="text-body num font-semibold text-[var(--green)]">{tg1.toFixed(1)}%</span>
+              </div>
+
+              <div className="flex justify-between items-center py-2 border-b-2 border-primary mb-2">
+                <span className="text-caption font-bold uppercase text-primary">Anbudssumma</span>
+                <span className="text-body num font-bold text-primary text-xl tracking-tight">{formatKr(anbud)}</span>
+              </div>
+              
+              <div className="bg-[var(--blue-lt)] rounded px-2 py-2 mb-2 border border-[var(--blue)]/20">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-caption text-[var(--blue-dk)] font-semibold uppercase flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">security</span> Riskanalys
+                  </span>
+                  <span className="text-[10px] bg-white text-[var(--blue)] px-1.5 py-0.5 rounded-full font-bold border border-[var(--blue)]/30" title="Säkerhetstal (0-1)">
+                    {(riskResult.sakerhetstal * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs text-[var(--blue-dk)] py-0.5">
+                  <span>P50 (Troligast)</span>
+                  <span className="font-mono">{formatKr(riskResult.p50 * (anbud/projNetto || 1))}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs text-[var(--blue-dk)] py-0.5 font-bold">
+                  <span>P85 (Konservativt)</span>
+                  <span className="font-mono">{formatKr(riskResult.p85 * (anbud/projNetto || 1))}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1 mt-2">
+                <span className="text-caption text-gray-500 uppercase">Totalt arbete</span>
+                <span className="text-body num font-semibold text-gray-800">{Math.round(totTim)} h</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="text-caption text-gray-500 uppercase">Total CO2e</span>
+                <span className="text-body num font-semibold text-gray-800">{Math.round(calcResult.co2.total)} kg</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="text-caption text-gray-500 uppercase flex items-center gap-2">
+                  BTA (m²)
+                </span>
+                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                  <input 
+                    type="number" 
+                    className="w-16 text-right bg-transparent outline-none focus:bg-gray-50"
+                    value={settings?.bta || ''}
+                    onChange={(e) => updateSettings?.('bta', Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
+                <span className="text-caption text-gray-500 uppercase">CO2e / m² BTA</span>
+                <span className="text-body num font-semibold text-gray-800">{(settings?.bta && settings.bta > 0) ? (calcResult.co2.total / settings.bta).toFixed(1) : '-'} kg</span>
+              </div>
+              
+              <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-200">
+                <button className="btn btn-secondary border border-gray-300 bg-white shadow-sm hover:bg-gray-50 text-xs px-2 py-1.5 font-medium flex justify-center items-center" onClick={handleExportExcel}>
+                  <i className="fa-solid fa-file-excel text-green-600 mr-2"></i> Exportera Kalkyl (Excel)
+                </button>
+                <button className="btn btn-primary bg-[var(--blue)] text-white shadow-sm hover:bg-[var(--blue-dk)] text-xs px-2 py-1.5 font-medium flex justify-center items-center" onClick={handleExportPdf}>
+                  <i className="fa-solid fa-file-pdf mr-2"></i> Exportera Anbud (PDF)
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
 
       <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Bekräfta borttagning">
@@ -415,6 +506,59 @@ export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, compa
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setShowBulkEditModal(false)}>Avbryt</Button>
           <Button variant="primary" onClick={executeBulkEdit}>Tillämpa</Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={showReceptModal} onClose={() => setShowReceptModal(false)} title="Infoga från recept">
+        <p className="text-sm text-[var(--color-on-surface-variant)] mb-4">Välj recept att infoga och ange mängd.</p>
+        
+        <div className="space-y-4 mb-4 text-sm">
+          <div>
+            <label className="block text-xs font-semibold mb-1">Recept</label>
+            <Select 
+              value={selectedRecept?.id || ''} 
+              onChange={e => {
+                const rec = receptList.find(r => r.id === e.target.value);
+                setSelectedRecept(rec || null);
+              }}
+              className="w-full"
+            >
+              <option value="">Välj recept...</option>
+              {receptList.map(r => (
+                <option key={r.id} value={r.id}>{r.kod ? `${r.kod} - ` : ''}{r.namn}</option>
+              ))}
+            </Select>
+          </div>
+          {selectedRecept && (
+            <div>
+              <label className="block text-xs font-semibold mb-1">Mängd ({selectedRecept.enhet || 'st'})</label>
+              <Input 
+                type="number"
+                step="0.01"
+                min="0"
+                value={receptMangd}
+                onChange={e => setReceptMangd(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+          )}
+          {selectedRecept && (
+            <div className="bg-gray-50 p-3 rounded border">
+              <h4 className="font-semibold text-xs mb-2 text-gray-700">Förhandsgranskning (Totalt)</h4>
+              <div className="flex justify-between items-center text-xs">
+                <span>Total kostnad (netto):</span>
+                <span className="font-mono">{Math.round(receptStyckkostnad(selectedRecept.data).total * receptMangd).toLocaleString('sv-SE')} kr</span>
+              </div>
+              <div className="flex justify-between items-center text-xs mt-1">
+                <span>Total CO₂e:</span>
+                <span className="font-mono">{(receptCo2PerEnhet(selectedRecept.data) * receptMangd).toFixed(1)} kg</span>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setShowReceptModal(false)}>Avbryt</Button>
+          <Button variant="primary" onClick={handleInfogaRecept} disabled={!selectedRecept || receptMangd <= 0}>Infoga</Button>
         </div>
       </Modal>
     </div>

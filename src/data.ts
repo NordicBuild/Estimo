@@ -44,6 +44,7 @@ export type ProjectInfo = {
   endDate?: string;
   notes?: string;
   bta?: number;
+  variables?: Record<string, number>;
 };
 
 export type UserSettings = {
@@ -81,7 +82,8 @@ export const INITIAL_PROJECT_INFO: ProjectInfo = {
   lan: '',
   land: 'Sverige',
   startDate: '',
-  endDate: ''
+  endDate: '',
+  variables: {}
 };
 
 export const INITIAL_COMPANY_INFO: CompanyInfo = {
@@ -156,9 +158,12 @@ export type Byggdel = {
   revision?: string; // e.g. "Kopia 1", "Alternativ 2"
   material?: string; // e.g. from IFC extraction
   qty: number;
+  qtyRaw?: string; // Formula string for qty
   antal?: number; // Antal instanser / Multiplier
+  antalRaw?: string; // Formula string for antal
   objFactor?: number;   // Object factor for time calculations
   dimensions?: Dimensions;
+  riskLevel?: 'låg' | 'medel' | 'hög'; // Custom risk level
   comment: string;
   active: boolean;
   collapsed?: boolean;
@@ -167,6 +172,8 @@ export type Byggdel = {
   endDate?: string;
   color?: string; // Color for planning
   showPriceInOffer?: boolean; // Show price in offer table
+  isBought?: boolean; // Flag to indicate if the part is bought (e.g. from an offer)
+  boughtPrice?: number; // The fixed unit price if bought
   vMatP?: number; // Custom material margin
   vArbP?: number; // Custom labor margin
   timeFactor?: number; // Custom time factor
@@ -175,6 +182,7 @@ export type Byggdel = {
     material: string;
     arbetsmoment?: string;
     amount: number;
+    amountRaw?: string; // Formula string for amount
     timeUnit: number;
     active: boolean;
     startDay?: number;
@@ -185,6 +193,8 @@ export type Byggdel = {
     cost?: number;
     matUnit?: string;
     unitPrice?: number; // Custom unit price
+    unitPriceRaw?: string; // Formula string for unit price
+    co2PerUnit?: number; // Custom CO2 per unit
   }[];
 };
 

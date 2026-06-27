@@ -1,8 +1,14 @@
 import React, { useMemo, useState, useRef } from 'react';
+import { supabase } from '../supabase';
 import { useBIMStore, getVisibleElements } from '../stores/useBIMStore';
-import { Search, Box, Layers, Scissors, Filter, ChevronDown, ChevronRight, X, Square, CheckSquare, Upload } from 'lucide-react';
+import { Search, Box, Layers, Scissors, Filter, ChevronDown, ChevronRight, X, Square, CheckSquare, Upload, AlertCircle } from 'lucide-react';
 
-export function BIMLeftPanel() {
+interface BIMLeftPanelProps {
+  projectId?: string | null;
+  companyId?: string | null;
+}
+
+export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
   const elements = useBIMStore((state) => state.elements);
   const filters = useBIMStore((state) => state.filters);
   const visibleElements = useMemo(() => getVisibleElements(elements, filters), [elements, filters]);
@@ -19,6 +25,11 @@ export function BIMLeftPanel() {
   const modelName = useBIMStore((state) => state.modelName);
   const setModelName = useBIMStore((state) => state.setModelName);
   const setModelUrl = useBIMStore((state) => state.setModelUrl);
+  const setElements = useBIMStore((state) => state.setElements);
+  const setActiveModel = useBIMStore((state) => state.setActiveModel);
+  const setLoading = useBIMStore((state) => state.setLoading);
+  const setError = useBIMStore((state) => state.setError);
+  const error = useBIMStore((state) => state.error);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -64,12 +75,92 @@ export function BIMLeftPanel() {
     </div>
   );
 
+  const handleFileUpload = async (file: File, projectId?: string | null, companyId?: string | null) => {
+    if (!projectId || !companyId) {
+      setError("Project ID and Company ID are required for upload.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const modelId = crypto.randomUUID();
+      const filePath = `projects/${projectId}/bim/${modelId}/${file.name}`;
+      
+      console.log(`[BIM] Uploading ${file.name} to ${filePath}...`);
+      
+      // 1. Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('bim-uploads')
+        .upload(filePath, file, { upsert: false });
+        
+      if (uploadError) throw uploadError;
+
+      console.log(`[BIM] Creating db record for model ${modelId}...`);
+
+      // 2. Create row in bim_models
+      const { error: dbError } = await supabase.from('bim_models').insert({
+        id: modelId,
+        company_id: companyId,
+        project_id: projectId,
+        name: file.name,
+        file_url: filePath,
+        format: 'ifc',
+        status: 'processing'
+      });
+
+      if (dbError) throw dbError;
+
+      console.log(`[BIM] Invoking parse function for ${modelId}...`);
+
+      // 3. Invoke parse function
+      const { data: funcData, error: funcError } = await supabase.functions.invoke('bim-process', {
+        body: { filePath, projectId, modelId, format: 'ifc' }
+      });
+
+      if (funcError) {
+         console.warn("[BIM] Parse function returned error:", funcError);
+         throw new Error(`Edge Function misslyckades: ${funcError.message || JSON.stringify(funcError)} (Se till att funktionen 'bim-process' är deployad i Supabase)`);
+      }
+
+      // Check if function returned an error in the response body
+      if (funcData && funcData.error) {
+         throw new Error(`BIM Process Error: ${funcData.error}`);
+      }
+
+      console.log(`[BIM] Fetching parsed elements...`);
+
+      // 4. Fetch elements
+      const { data: parsedElements, error: fetchError } = await supabase
+        .from('bim_elements')
+        .select('*')
+        .eq('model_id', modelId);
+
+      if (fetchError) throw fetchError;
+
+      if (parsedElements && parsedElements.length > 0) {
+        setElements(parsedElements as any[]);
+        setModelName(file.name);
+        setActiveModel(modelId);
+        setModelUrl(null); // Clear local url as we now use id
+      } else {
+        throw new Error("No elements could be extracted from this model.");
+      }
+      
+      console.log(`[BIM] Successfully loaded ${parsedElements.length} elements.`);
+
+    } catch (err: any) {
+      console.error("[BIM] Error uploading/parsing IFC:", err);
+      setError(err.message || "Failed to process IFC file.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setModelUrl(url);
-      setModelName(file.name);
+      handleFileUpload(file, projectId, companyId);
     }
   };
 
@@ -83,15 +174,22 @@ export function BIMLeftPanel() {
           <option value="current">{modelName}</option>
         </select>
         
+        {error && (
+          <div className="mb-3 px-3 py-2 bg-red-50 text-red-600 rounded-md text-xs flex items-start gap-2 border border-red-100">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <button 
           onClick={() => fileInputRef.current?.click()}
           className="w-full py-1.5 px-3 mb-3 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"
         >
-          <Upload className="w-4 h-4" /> Ladda upp GLB/GLTF
+          <Upload className="w-4 h-4" /> Ladda upp IFC
         </button>
         <input 
           type="file" 
-          accept=".glb,.gltf" 
+          accept=".ifc,.glb,.gltf" 
           className="hidden" 
           ref={fileInputRef} 
           onChange={handleFileChange} 

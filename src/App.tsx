@@ -13,9 +13,13 @@ import { PlaneringTab } from "./components/PlaneringTab";
 import { SlutsidaTab } from "./components/SlutsidaTab";
 import { HemsidaTab } from "./components/HemsidaTab";
 import { AdminTab } from "./components/AdminTab";
+import { InkopTab } from "./components/InkopTab";
+import { PrognosTab } from "./components/PrognosTab";
+import { ReceptbibliotekTab } from "./components/ReceptbibliotekTab";
 import { PdfMeasurementTab } from "./components/PdfMeasurementTab";
 import { BIMMeasurementTab } from "./components/BIMMeasurementTab";
 import { ByggdelModal } from "./components/ByggdelModal";
+import { ErfarenhetModal } from "./components/ErfarenhetModal";
 import { Header } from "./components/Header";
 import { useDialog } from './hooks/useDialog';
 import { useAppAuth } from './hooks/useAppAuth';
@@ -30,7 +34,7 @@ import { calculateBaseMoments, calculateDefaultMoments } from "./calculationHelp
 
 export default function App() {
   const [appMode, setAppMode] = useState<'kalkyl' | 'admin'>(() => (localStorage.getItem('betong_app_mode') as any) || 'kalkyl');
-  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter'>(() => {
+  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek'>(() => {
     return (localStorage.getItem('betong_active_tab') as any) || 'projekt';
   });
   const [adminSubTab, setAdminSubTab] = useState<'oversikt' | 'kunder' | 'fakturor' | 'register' | 'installningar'>(() => {
@@ -64,7 +68,6 @@ export default function App() {
   }, [adminSubTab]);
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(window.innerWidth >= 1024);
   const { dialogConfig, confirmAction, promptAction } = useDialog();
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
 
@@ -84,6 +87,7 @@ export default function App() {
     userSettings, setUserSettings,
     materials, setMaterials,
     arbetsData, setArbetsData,
+    companyTidsfaktorer, setCompanyTidsfaktorer,
     dataLoaded, setDataLoaded,
     dataSpaceId, setDataSpaceId,
     accessDenied, setAccessDenied,
@@ -358,6 +362,7 @@ export default function App() {
     isOpeningModal
   } = useByggdelModal();
 
+  const [showErfarenhetModal, setShowErfarenhetModal] = useState(false);
   const [undoToast, setUndoToast] = useState<{ id: number; message: string; action: () => void } | null>(null);
 
   const showUndoToast = (message: string, action: () => void) => {
@@ -378,7 +383,8 @@ export default function App() {
     settings.trRate,
     settings.vMatP,
     settings.vArbP,
-    settings.timeFactor
+    settings.timeFactor,
+    companyTidsfaktorer
   );
 
   const formatKr = (v: number) => Math.round(v).toLocaleString('sv-SE') + ' kr';
@@ -1022,12 +1028,13 @@ export default function App() {
     showNotification('Moment duplicerat.', 'success');
   };
 
-  const updatePartQty = (id: number, qty: number) => {
+  const updatePartQty = (id: number, qty: number, raw?: string) => {
     setByggdelar(prev => prev.map(p => {
       if (p.id === id) {
         return {
           ...p,
           qty,
+          qtyRaw: raw !== undefined ? raw : p.qtyRaw,
           dimensions: p.dimensions ? { ...p.dimensions, qty } : undefined
         };
       }
@@ -1035,10 +1042,10 @@ export default function App() {
     }));
   };
 
-  const updatePartAntal = (id: number, antal: number) => {
+  const updatePartAntal = (id: number, antal: number, raw?: string) => {
     setByggdelar(prev => prev.map(p => {
       if (p.id === id) {
-        return { ...p, antal };
+        return { ...p, antal, antalRaw: raw !== undefined ? raw : p.antalRaw };
       }
       return p;
     }));
@@ -1290,6 +1297,23 @@ export default function App() {
     );
   }
 
+  const handleApplyOffert = (priserPerKey: Record<string, number>) => {
+    let count = 0;
+    setByggdelar(prev => prev.map(b => {
+      const key = b.id.toString();
+      if (priserPerKey[key] !== undefined) {
+        count++;
+        return {
+          ...b,
+          isBought: true,
+          boughtPrice: priserPerKey[key]
+        };
+      }
+      return b;
+    }));
+    showNotification(`Offerten antogs. ${count} byggdelar uppdaterades.`, 'success');
+  };
+
   return (
     <div className="min-h-screen bg-background text-on-background font-sans flex flex-col h-screen overflow-hidden">
       <Header
@@ -1318,8 +1342,6 @@ export default function App() {
             handleImportExcel={handleImportExcel}
             handleExportExcel={handleExportExcel}
             downloadTemplate={downloadTemplate}
-            inspectorOpen={inspectorOpen}
-            setInspectorOpen={setInspectorOpen}
           />
 
           <div className="flex-1 relative flex min-w-0 min-h-0">
@@ -1403,6 +1425,10 @@ export default function App() {
                 return p;
               }));
             }}
+            byggdelar={byggdelar}
+            projectId={activeProjectId}
+            companyId={dataSpaceId}
+            onProjectCompleted={() => setShowErfarenhetModal(true)}
           />
         )}
         {activeTab === 'kalkyl' && (
@@ -1412,6 +1438,8 @@ export default function App() {
             materials={materials}
             projectInfo={projectInfo}
             companyInfo={companyInfo}
+            companyId={dataSpaceId}
+            addParts={addMeasurementParts}
             settings={settings}
             updateSettings={(key, val) => setSettings({ ...settings, [key]: val })}
             byggdelTemplates={byggdelTemplates}
@@ -1442,7 +1470,7 @@ export default function App() {
           <PdfMeasurementTab addParts={addMeasurementParts} />
         )}
         {activeTab === 'bim' && (
-          <BIMMeasurementTab addParts={addMeasurementParts} />
+          <BIMMeasurementTab addParts={addMeasurementParts} projectId={activeProjectId} companyId={dataSpaceId} />
         )}
         {activeTab === 'material' && (
           <MaterialTab 
@@ -1481,6 +1509,8 @@ export default function App() {
         {activeTab === 'planering' && <PlaneringTab calcResult={calcResult} byggdelar={byggdelar} reorderByggdelar={reorderByggdelar} reorderMoment={reorderMoment} updateStartDay={updateStartDay} updatePlanDates={updatePlanDates} updateMomentWorkers={updateMomentWorkers} updateByggdelColor={updateByggdelColor} />}
         {activeTab === 'slutsida' && <SlutsidaTab settings={settings} setSettings={setSettings} calcResult={calcResult} />}
         {activeTab === 'anbud' && <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} materials={materials} updateByggdelOfferPrice={updateByggdelOfferPrice} />}
+        {activeTab === 'inkop' && <InkopTab projectId={activeProjectId} byggdelar={byggdelar} calcResult={calcResult} companyId={dataSpaceId} onApplyOffert={handleApplyOffert} />}
+        {activeTab === 'prognos' && <PrognosTab projectId={activeProjectId} byggdelar={byggdelar} calcResult={calcResult} companyId={dataSpaceId} />}
         {activeTab !== 'anbud' && (
           <div style={{ position: 'absolute', top: '-10000px', left: 0, width: '1000px', zIndex: -1000, pointerEvents: 'none' }}>
             <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} materials={materials} updateByggdelOfferPrice={updateByggdelOfferPrice} />
@@ -1531,6 +1561,7 @@ export default function App() {
             </div>
           </div>
         )}
+        {activeTab === 'receptbibliotek' && <ReceptbibliotekTab companyId={dataSpaceId} />}
         {activeTab === 'maskiner' && (
           <div className="p-8 flex items-center justify-center h-full">
             <div className="text-center">
@@ -1559,27 +1590,6 @@ export default function App() {
           </div>
         )}
       </main>
-            {/* Inspector Panel */}
-            <div 
-              className={`
-                ${inspectorOpen ? 'translate-x-0 shadow-2xl lg:shadow-none' : 'translate-x-full lg:translate-x-0 lg:hidden'} 
-                fixed inset-y-0 right-0 z-[2000] w-80 max-w-[85vw] bg-surface border-l border-outline-variant transition-all duration-300 ease-in-out flex flex-col
-                lg:static lg:z-auto ${inspectorOpen ? 'lg:flex' : 'hidden'} shrink-0
-              `}
-            >
-              <div className="flex items-center justify-between p-3 border-b border-outline-variant bg-surface-container-lowest shrink-0 lg:hidden">
-                <span className="font-bold text-sm tracking-wider text-on-surface-variant uppercase">Inspektor</span>
-                <button onClick={() => setInspectorOpen(false)} className="text-on-surface-variant hover:text-on-surface p-1">
-                  <span className="material-symbols-outlined text-[20px]">close</span>
-                </button>
-              </div>
-              <div id="inspector-portal-target" className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden bg-surface-container-lowest"></div>
-            </div>
-
-            {/* Mobile Inspector overlay backdrop */}
-            {inspectorOpen && (
-              <div className="fixed inset-0 bg-black/20 z-[1999] lg:hidden" onClick={() => setInspectorOpen(false)}></div>
-            )}
           </div>
       </div>
       </div>
@@ -1641,6 +1651,16 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <ErfarenhetModal
+        isOpen={showErfarenhetModal}
+        onClose={() => setShowErfarenhetModal(false)}
+        byggdelar={byggdelar}
+        calcResult={calcResult}
+        companyTidsfaktorer={companyTidsfaktorer}
+        setCompanyTidsfaktorer={setCompanyTidsfaktorer}
+        showNotification={showNotification}
+      />
 
       {undoToast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[3000] animate-in fade-in slide-in-from-bottom-5 duration-300">

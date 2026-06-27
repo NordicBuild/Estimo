@@ -7,4 +7,3 @@ export * from './Badge';
 export * from './Toolbar';
 export * from './Modal';
 export * from './DataTable';
-export * from './InspectorPortal';

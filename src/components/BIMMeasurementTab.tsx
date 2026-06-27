@@ -6,14 +6,16 @@ import { useBIMStore } from '../stores/useBIMStore';
 
 interface Props {
   addParts: (parts: any[]) => void;
+  projectId?: string | null;
+  companyId?: string | null;
 }
 
-export function BIMMeasurementTab({ addParts }: Props) {
+export function BIMMeasurementTab({ addParts, projectId, companyId }: Props) {
   const modelUrl = useBIMStore(state => state.modelUrl);
 
   return (
     <div className="flex w-full h-full bg-white overflow-hidden">
-      <BIMLeftPanel />
+      <BIMLeftPanel projectId={projectId} companyId={companyId} />
       <div className="flex-1 relative min-w-0">
         <BIM3DViewer modelUrl={modelUrl || undefined} />
       </div>

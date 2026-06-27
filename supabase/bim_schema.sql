@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS bim_elements (
     category TEXT,
     name TEXT,
     storey TEXT,
+    discipline TEXT,
     properties JSONB DEFAULT '{}',
     geometry_data JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -55,11 +56,39 @@ COMMENT ON COLUMN bim_elements.properties IS 'Nyckel-värde-par för elementets 
 COMMENT ON COLUMN bim_elements.geometry_data IS 'Geometridata för highlight eller bounding box-beräkningar.';
 COMMENT ON COLUMN bim_elements.created_at IS 'När elementet infogades.';
 
--- Index för snabba sökningar
+-- ==========================================
+-- Storage
+-- ==========================================
+
+-- 1. Skapa storage-bucketen 'bim-uploads' (privat) om den inte finns
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('bim-uploads', 'bim-uploads', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Tillåt inloggade att ladda upp och läsa filer i bim-uploads
+CREATE POLICY "Tillåt inloggade att ladda upp" ON storage.objects
+    FOR INSERT TO authenticated WITH CHECK (bucket_id = 'bim-uploads');
+
+CREATE POLICY "Tillåt inloggade att läsa" ON storage.objects
+    FOR SELECT TO authenticated USING (bucket_id = 'bim-uploads');
+
+
+-- ==========================================
+-- Databasändringar (Migrations-steg)
+-- ==========================================
+
+-- 2. Lägg till kolumnen 'discipline' på bim_elements om den saknas
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bim_elements' AND column_name = 'discipline') THEN
+        ALTER TABLE bim_elements ADD COLUMN discipline TEXT;
+    END IF;
+END $$;
+
+-- 6. Index för snabba sökningar
 CREATE INDEX IF NOT EXISTS idx_bim_elements_model_id ON bim_elements(model_id);
 CREATE INDEX IF NOT EXISTS idx_bim_elements_category ON bim_elements(category);
 CREATE INDEX IF NOT EXISTS idx_bim_elements_storey ON bim_elements(storey);
-
 
 -- 3. BIM Selections (Användarens grupperade element / "mängder")
 CREATE TABLE IF NOT EXISTS bim_selections (
@@ -89,7 +118,6 @@ COMMENT ON COLUMN bim_selections.created_by IS 'Användaren som skapade urvalet.
 COMMENT ON COLUMN bim_selections.created_at IS 'Skapandetidpunkt.';
 COMMENT ON COLUMN bim_selections.updated_at IS 'Ändringstidpunkt.';
 
-
 -- 4. BIM Snapshots (Sparade vyer, kameravinklar, aktiva urval)
 CREATE TABLE IF NOT EXISTS bim_snapshots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -116,24 +144,52 @@ COMMENT ON COLUMN bim_snapshots.selection_state IS 'JSON med aktivt markerade el
 COMMENT ON COLUMN bim_snapshots.created_by IS 'Användaren som skapade snapshotet.';
 COMMENT ON COLUMN bim_snapshots.created_at IS 'Skapandetidpunkt.';
 
-
 -- ==========================================
 -- Row Level Security (RLS)
 -- ==========================================
+
+-- 3. Aktivera RLS
 ALTER TABLE bim_models ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bim_elements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bim_selections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bim_snapshots ENABLE ROW LEVEL SECURITY;
 
--- Exempel-policys (Stubs)
-CREATE POLICY "Se sitt eget företags modeller" ON bim_models
+-- Ta bort gamla stubs för säkerhets skull
+DROP POLICY IF EXISTS "Se sitt eget företags modeller" ON bim_models;
+DROP POLICY IF EXISTS "Se element från tillåtna modeller" ON bim_elements;
+DROP POLICY IF EXISTS "Se sitt eget företags urval" ON bim_selections;
+DROP POLICY IF EXISTS "Se sitt eget företags snapshots" ON bim_snapshots;
+
+-- 4. SELECT-policy för bim_models
+-- Förklaring: Tillåter en användare att läsa (SELECT) rader i bim_models där modellens company_id matchar användarens eget company_id i profiles.
+CREATE POLICY "Läsbehörighet för bim_models" ON bim_models
+    FOR SELECT 
+    USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+-- 4. SELECT-policy för bim_elements
+-- Förklaring: Tillåter en användare att läsa element om elementets model_id är kopplat till en modell i bim_models som tillhör användarens företag.
+CREATE POLICY "Läsbehörighet för bim_elements" ON bim_elements
+    FOR SELECT 
+    USING (model_id IN (
+        SELECT id FROM bim_models WHERE company_id IN (
+            SELECT company_id FROM profiles WHERE id = auth.uid()
+        )
+    ));
+
+-- 5. INSERT/UPDATE/DELETE på bim_models
+-- Förklaring: Användare tillhörande samma company_id får skapa, ändra eller ta bort modeller (ALL inkluderar INSERT, UPDATE, DELETE).
+CREATE POLICY "Skrivbehörighet för bim_models" ON bim_models
+    FOR ALL
+    USING (
+        company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
+    )
+    WITH CHECK (
+        company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
+    );
+
+-- (Behåll de gamla urvals- och snapshot-policyerna med nya namn för tydlighetens skull)
+CREATE POLICY "Läs och skriv för egna företags urval" ON bim_selections
     FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
 
-CREATE POLICY "Se element från tillåtna modeller" ON bim_elements
-    FOR ALL USING (model_id IN (SELECT id FROM bim_models WHERE company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())));
-
-CREATE POLICY "Se sitt eget företags urval" ON bim_selections
-    FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
-
-CREATE POLICY "Se sitt eget företags snapshots" ON bim_snapshots
+CREATE POLICY "Läs och skriv för egna företags snapshots" ON bim_snapshots
     FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));

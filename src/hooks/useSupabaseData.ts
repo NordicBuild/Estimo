@@ -77,6 +77,15 @@ export function useSupabaseData(
     }
   });
 
+  const [companyTidsfaktorer, setCompanyTidsfaktorer] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('betong_company_tidsfaktorer');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   const [byggdelTemplates, setByggdelTemplates] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('betong_byggdel_templates');
@@ -229,6 +238,9 @@ export function useSupabaseData(
         const userSettingsDoc = sessionData.find(d => d.id === `user_settings_${user.id}`);
         if (userSettingsDoc) setUserSettings(userSettingsDoc.data);
 
+        const tidsfaktorerDoc = sessionData.find(d => d.id === `company_tidsfaktorer_${dsId}`);
+        if (tidsfaktorerDoc) setCompanyTidsfaktorer(tidsfaktorerDoc.data);
+
         const customCategoriesDoc = sessionData.find(d => d.id === `custom_categories_${dsId}`);
         if (customCategoriesDoc) setCustomCategories(customCategoriesDoc.data);
       } else {
@@ -340,6 +352,13 @@ export function useSupabaseData(
   }, [userSettings, user, dbReady]);
 
   useEffect(() => {
+    localStorage.setItem('betong_company_tidsfaktorer', JSON.stringify(companyTidsfaktorer));
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_tidsfaktorer_${dataSpaceId}`, data: companyTidsfaktorer }).then(({error}) => {
+      if (error) console.warn("companyTidsfaktorer sync error", error);
+    });
+  }, [companyTidsfaktorer, dataSpaceId, dbReady]);
+
+  useEffect(() => {
     if (projects.length > 0) {
       if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `projects_${dataSpaceId}`, data: projects }).then(({error}) => {
         if (error) console.warn("projects sync error", error);
@@ -394,6 +413,7 @@ export function useSupabaseData(
     userSettings, setUserSettings,
     materials, setMaterials,
     arbetsData, setArbetsData,
+    companyTidsfaktorer, setCompanyTidsfaktorer,
     dataLoaded, setDataLoaded,
     dataSpaceId, setDataSpaceId,
     accessDenied, setAccessDenied,

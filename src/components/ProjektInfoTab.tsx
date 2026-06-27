@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ProjectInfo, CompanyInfo, SavedProject, ProjectVersion } from '../data';
+import { ProjectInfo, CompanyInfo, SavedProject, ProjectVersion, Byggdel } from '../data';
+
+import { UtfallInmatning } from './UtfallInmatning';
 
 interface Props {
   projectInfo: ProjectInfo;
@@ -11,6 +13,10 @@ interface Props {
   loadVersion: (version: ProjectVersion) => void;
   deleteVersion: (vId: string) => void;
   addActivityLog?: (action: string, details?: string) => void;
+  byggdelar?: Byggdel[];
+  projectId?: string;
+  companyId?: string;
+  onProjectCompleted?: () => void;
 }
 
 const COUNTRIES = ['Sverige', 'Norge', 'Danmark', 'Finland', 'Schweiz'];
@@ -48,7 +54,7 @@ const StatusPill = ({ status }: { status?: string }) => {
   );
 };
 
-export function ProjektInfoTab({ projectInfo, setProjectInfo, companyInfo, setCompanyInfo, currentProject, saveVersion, loadVersion, deleteVersion, addActivityLog }: Props) {
+export function ProjektInfoTab({ projectInfo, setProjectInfo, companyInfo, setCompanyInfo, currentProject, saveVersion, loadVersion, deleteVersion, addActivityLog, byggdelar = [], projectId, companyId, onProjectCompleted }: Props) {
   const [loadingProj, setLoadingProj] = useState(false);
   const [loadingComp, setLoadingComp] = useState(false);
   const [newVersionName, setNewVersionName] = useState('');
@@ -214,23 +220,41 @@ export function ProjektInfoTab({ projectInfo, setProjectInfo, companyInfo, setCo
           </div>
           <div className="lg:col-span-1">
             <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Projektstatus</label>
-            <select
-              value={projectInfo.status || 'Pågående'}
-              onChange={e => {
-                const newStatus = e.target.value;
-                if (newStatus !== (projectInfo.status || 'Pågående') && addActivityLog) {
-                  addActivityLog('Ändrade status', `Status ändrades från "${projectInfo.status || 'Pågående'}" till "${newStatus}"`);
-                }
-                setProjectInfo({ ...projectInfo, status: newStatus });
-              }}
-              className="w-full border border-[var(--border)] rounded-md px-3 py-2 text-sm outline-none focus:border-[var(--blue)] transition-colors bg-white hover:border-gray-300 font-semibold"
-            >
-              <option value="Pågående">Pågående</option>
-              <option value="Väntande">Väntande</option>
-              <option value="Avslutat">Avslutat</option>
-              <option value="Klar">Klar</option>
-              <option value="Avbrutet">Avbrutet</option>
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={projectInfo.status || 'Pågående'}
+                onChange={e => {
+                  const oldStatus = projectInfo.status || 'Pågående';
+                  const newStatus = e.target.value;
+                  if (newStatus !== oldStatus && addActivityLog) {
+                    addActivityLog('Ändrade status', `Status ändrades från "${oldStatus}" till "${newStatus}"`);
+                  }
+                  setProjectInfo({ ...projectInfo, status: newStatus });
+                  
+                  if ((newStatus === 'Klar' || newStatus === 'Avslutat') && 
+                      oldStatus !== 'Klar' && oldStatus !== 'Avslutat') {
+                    onProjectCompleted?.();
+                  }
+                }}
+                className="w-full border border-[var(--border)] rounded-md px-3 py-2 text-sm outline-none focus:border-[var(--blue)] transition-colors bg-white hover:border-gray-300 font-semibold"
+              >
+                <option value="Pågående">Pågående</option>
+                <option value="Väntande">Väntande</option>
+                <option value="Avslutat">Avslutat</option>
+                <option value="Klar">Klar</option>
+                <option value="Avbrutet">Avbrutet</option>
+              </select>
+              
+              {(projectInfo.status === 'Klar' || projectInfo.status === 'Avslutat') && (
+                <button 
+                  onClick={() => onProjectCompleted?.()}
+                  className="bg-[var(--purple)] text-white px-3 py-1 rounded-md text-xs font-medium hover:bg-purple-700 whitespace-nowrap shadow-sm"
+                  title="Utvärdera tidsåtgång (EAC)"
+                >
+                  Utvärdera EAC
+                </button>
+              )}
+            </div>
           </div>
           <div className="lg:col-span-1">
             <label className="block text-xs font-semibold text-[var(--text2)] mb-1">Entreprenadform</label>
@@ -352,6 +376,84 @@ export function ProjektInfoTab({ projectInfo, setProjectInfo, companyInfo, setCo
         </div>
       </section>
 
+      {/* Variables Section */}
+      <section className="bg-white rounded-xl shadow-sm border border-[var(--border)] overflow-hidden">
+        <div className="bg-[var(--surface2)] px-6 py-4 border-b border-[var(--border)] flex justify-between items-center">
+          <h2 className="text-lg font-bold text-[var(--text2)] flex items-center gap-2">
+            <span className="material-symbols-outlined text-[var(--blue)] text-[20px]">functions</span> Variabler för kalkylering
+          </h2>
+        </div>
+        <div className="p-6">
+          <p className="text-xs text-gray-500 mb-4">
+            Här kan du definiera variabler som du kan använda i kalkylen. Till exempel, om du definierar <code>BTA = 1200</code>, kan du i kalkylen skriva <code>=BTA*0.18</code> i en cell för Mängd, Antal eller Pris.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {Object.entries(projectInfo.variables || {}).map(([key, val]) => (
+              <div key={key} className="flex items-center gap-2 border border-[var(--border)] rounded-md p-2 bg-gray-50 group">
+                <input
+                  type="text"
+                  value={key}
+                  onChange={e => {
+                    const newKey = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                    const newVars = { ...projectInfo.variables };
+                    if (newKey && newKey !== key) {
+                      newVars[newKey] = newVars[key];
+                      delete newVars[key];
+                      setProjectInfo({ ...projectInfo, variables: newVars });
+                    }
+                  }}
+                  className="w-1/2 bg-transparent text-sm font-semibold outline-none border-b border-transparent focus:border-gray-300"
+                  placeholder="Namn"
+                />
+                <span className="text-gray-400">=</span>
+                <input
+                  type="number"
+                  value={val}
+                  onChange={e => {
+                    const num = parseFloat(e.target.value);
+                    const newVars = { ...projectInfo.variables, [key]: isNaN(num) ? 0 : num };
+                    setProjectInfo({ ...projectInfo, variables: newVars });
+                  }}
+                  className="w-1/2 bg-transparent text-sm outline-none border-b border-transparent focus:border-gray-300 text-right num"
+                  placeholder="Värde"
+                />
+                <button
+                  onClick={() => {
+                    const newVars = { ...projectInfo.variables };
+                    delete newVars[key];
+                    setProjectInfo({ ...projectInfo, variables: newVars });
+                  }}
+                  className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Ta bort variabel"
+                >
+                  <span className="material-symbols-outlined text-[16px]">close</span>
+                </button>
+              </div>
+            ))}
+            
+            <div className="flex items-center gap-2 border border-dashed border-gray-300 rounded-md p-2 hover:border-[var(--blue)] transition-colors">
+              <input
+                type="text"
+                placeholder="Ny variabel (t.ex. area)"
+                className="w-full bg-transparent text-sm outline-none"
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && e.currentTarget.value) {
+                    const newKey = e.currentTarget.value.replace(/[^a-zA-Z0-9_]/g, '');
+                    if (newKey && !(projectInfo.variables && newKey in projectInfo.variables)) {
+                      setProjectInfo({ 
+                        ...projectInfo, 
+                        variables: { ...(projectInfo.variables || {}), [newKey]: 0 } 
+                      });
+                      e.currentTarget.value = '';
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Notes Section */}
       <section className="bg-white rounded-xl shadow-sm border border-[var(--border)] overflow-hidden">
         <div className="bg-[var(--surface2)] px-6 py-4 border-b border-[var(--border)] flex justify-between items-center">
@@ -450,6 +552,14 @@ export function ProjektInfoTab({ projectInfo, setProjectInfo, companyInfo, setCo
           )}
         </div>
       </section>
+
+      {projectId && companyId && (
+        <UtfallInmatning 
+          byggdelar={byggdelar} 
+          projectId={projectId} 
+          companyId={companyId} 
+        />
+      )}
 
       </div>
     </div>
