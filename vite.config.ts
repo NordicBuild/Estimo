@@ -27,6 +27,19 @@ export default defineConfig(({mode}) => {
     },
     optimizeDeps: {
       exclude: ['web-ifc']
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'three': ['three'],
+            'pdfjs-dist': ['pdfjs-dist'],
+            'xlsx': ['xlsx'],
+            'html2pdf': ['html2pdf.js'],
+            'recharts': ['recharts']
+          }
+        }
+      }
     }
   };
 });

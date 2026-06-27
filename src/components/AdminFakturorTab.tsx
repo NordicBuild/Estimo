@@ -11,6 +11,7 @@ export interface Invoice {
 
 export function AdminFakturorTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoiceRecordId, setInvoiceRecordId] = useState<string | null>(null);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState<Partial<Invoice>>({
@@ -32,11 +33,12 @@ export function AdminFakturorTab() {
     setDbError(false);
     try {
       const { data, error } = await supabase
-        .from("app_state")
-        .select("data")
-        .eq("id", "admin_invoices")
-        .single();
+        .from("admin_invoices")
+        .select("id, data")
+        .limit(1)
+        .maybeSingle();
       if (!error && data) {
+         setInvoiceRecordId(data.id);
          setInvoices(data.data as Invoice[]);
       } else {
          throw new Error("No data or error");
@@ -60,8 +62,14 @@ export function AdminFakturorTab() {
     setInvoices(newInvoices);
     localStorage.setItem("betong_admin_invoices", JSON.stringify(newInvoices));
     try {
-      const { error } = await supabase.from("app_state").upsert({ id: "admin_invoices", data: newInvoices });
-      if (error && error.code !== "PGRST205") throw error;
+      if (invoiceRecordId) {
+        const { error } = await supabase.from("admin_invoices").update({ data: newInvoices }).eq("id", invoiceRecordId);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("admin_invoices").insert({ data: newInvoices }).select("id").single();
+        if (data) setInvoiceRecordId(data.id);
+        if (error) throw error;
+      }
     } catch (err) {
       console.error("Fel vid sparande av fakturor", err);
       setDbError(true);

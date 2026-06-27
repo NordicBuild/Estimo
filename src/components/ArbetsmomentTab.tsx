@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import * as XLSX from 'xlsx';
+// import removed
 import { ArbetsMoment } from "../data";
 
 interface Props {
@@ -47,7 +47,8 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet([
       {
         Kategori: 'Betongarbete',
@@ -63,10 +64,11 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
     XLSX.writeFile(wb, 'Arbetsmoment_Mall.xlsx');
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const XLSX = await import('xlsx');
     const reader = new FileReader();
     reader.onload = (event) => {
       try {

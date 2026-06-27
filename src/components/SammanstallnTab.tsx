@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { CalculationResult } from '../useCalculation';
 import { Material, ProjectInfo, CompanyInfo } from '../data';
-import html2pdf from 'html2pdf.js';
+// import removed
 
 interface Props {
   calcResult: CalculationResult;
@@ -18,9 +18,11 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
   const [editingPrice, setEditingPrice] = useState<{name: string, price: number} | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!pdfRef.current) return;
     const element = pdfRef.current;
+    const html2pdfModule = await import('html2pdf.js');
+    const html2pdf = html2pdfModule.default;
     const opt = {
       margin:       10,
       filename:     `Sammanstallning_${projectInfo.nr || 'projekt'}.pdf`,

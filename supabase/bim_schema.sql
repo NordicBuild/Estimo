@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS bim_models (
     file_size NUMERIC,
     format TEXT,
     status TEXT DEFAULT 'pending',
+    geometry_url TEXT,
+    has_geometry BOOLEAN DEFAULT false,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -82,6 +84,12 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bim_elements' AND column_name = 'discipline') THEN
         ALTER TABLE bim_elements ADD COLUMN discipline TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bim_models' AND column_name = 'geometry_url') THEN
+        ALTER TABLE bim_models ADD COLUMN geometry_url TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bim_models' AND column_name = 'has_geometry') THEN
+        ALTER TABLE bim_models ADD COLUMN has_geometry BOOLEAN DEFAULT false;
     END IF;
 END $$;
 

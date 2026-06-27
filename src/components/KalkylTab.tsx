@@ -84,7 +84,47 @@ const LocalNumberInput = ({ initialValue, onChange }: { initialValue: number, on
   );
 };
 
-export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, companyInfo, companyId, addParts, settings, updateSettings, byggdelTemplates, addTemplate, deleteTemplate, addPartFromTemplate, toggleByggdel, toggleAllByggdelar, reorderByggdelar, removePart, clonePart, togglePartActive, toggleTypeActive, cloneType, openModal, updateMoment, duplicateMoment, updateMaterialPrice, addMoment, removeMoment, updatePartQty, updatePartAntal, removeMultipleParts, updateMultipleParts }: Props) {
+import { useProjectData } from '../state/ProjectDataContext';
+import { useKalkylHistory } from '../state/KalkylHistoryContext';
+
+export function KalkylTab(props: Props) {
+  const projectData = useProjectData();
+  const kalkylHistory = useKalkylHistory();
+  
+  // Use context values instead of props, falling back to props if context is missing (though it shouldn't be).
+  const byggdelar = projectData.byggdelar || props.byggdelar;
+  const materials = projectData.materials || props.materials;
+  const projectInfo = projectData.projectInfo || props.projectInfo;
+  const companyInfo = projectData.companyInfo || props.companyInfo;
+  const companyId = projectData.dataSpaceId || props.companyId;
+  const settings = projectData.settings || props.settings;
+  const updateSettings = props.updateSettings; // Always use props for now because ProjectData provides setSettings (different signature)
+  const byggdelTemplates = projectData.byggdelTemplates || props.byggdelTemplates;
+  const addTemplate = projectData.addTemplate || props.addTemplate;
+  const deleteTemplate = projectData.deleteTemplate || props.deleteTemplate;
+
+  const calcResult = kalkylHistory.calcResult || props.calcResult;
+  const addParts = kalkylHistory.addParts || props.addParts;
+  const addPartFromTemplate = kalkylHistory.addPartFromTemplate || props.addPartFromTemplate;
+  const toggleByggdel = kalkylHistory.toggleByggdel || props.toggleByggdel;
+  const toggleAllByggdelar = kalkylHistory.toggleAllByggdelar || props.toggleAllByggdelar;
+  const reorderByggdelar = kalkylHistory.reorderByggdelar || props.reorderByggdelar;
+  const removePart = kalkylHistory.removePart || props.removePart;
+  const removeMultipleParts = kalkylHistory.removeMultipleParts || props.removeMultipleParts;
+  const updateMultipleParts = kalkylHistory.updateMultipleParts || props.updateMultipleParts;
+  const clonePart = kalkylHistory.clonePart || props.clonePart;
+  const togglePartActive = kalkylHistory.togglePartActive || props.togglePartActive;
+  const toggleTypeActive = kalkylHistory.toggleTypeActive || props.toggleTypeActive;
+  const cloneType = kalkylHistory.cloneType || props.cloneType;
+  const openModal = kalkylHistory.openModal || props.openModal;
+  const updateMoment = kalkylHistory.updateMoment || props.updateMoment;
+  const duplicateMoment = kalkylHistory.duplicateMoment || props.duplicateMoment;
+  const updateMaterialPrice = kalkylHistory.updateMaterialPrice || props.updateMaterialPrice;
+  const addMoment = kalkylHistory.addMoment || props.addMoment;
+  const removeMoment = kalkylHistory.removeMoment || props.removeMoment;
+  const updatePartQty = kalkylHistory.updatePartQty || props.updatePartQty;
+  const updatePartAntal = kalkylHistory.updatePartAntal || props.updatePartAntal;
+
   const { parts, anbud, tg1, totVol, totTim, projNetto } = calcResult;
   const formatKr = (v: number) => Math.round(v).toLocaleString('sv-SE') + ' kr';
 
@@ -140,7 +180,7 @@ export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, compa
         }
       }
       newPart.moments = moments;
-      addParts([newPart]);
+      addParts([{...newPart, id: Date.now()} as Byggdel]);
       setShowReceptModal(false);
       setSelectedRecept(null);
       setReceptMangd(1);
@@ -317,124 +357,7 @@ export function KalkylTab({ byggdelar, calcResult, materials, projectInfo, compa
           </div>
         </div>
 
-        <aside className="w-full lg:w-80 shrink-0 border-t lg:border-t-0 lg:border-l border-gray-200 bg-white overflow-y-auto">
-          <div className="p-4 flex flex-col gap-4 h-full bg-white">
-            <h2 className="text-h3 font-bold uppercase tracking-wider text-on-surface-variant mb-2 border-b border-gray-200 pb-2">Anbudsremsan</h2>
-            
-            <div className="flex flex-col gap-3 font-mono text-sm">
-              <div className="flex justify-between items-center py-1">
-                <span className="text-caption text-gray-500 uppercase">Självkostnad</span>
-                <span className="text-body num font-semibold text-gray-800">{formatKr(projNetto)}</span>
-              </div>
-              
-              <div className="flex justify-between items-center py-1">
-                <span className="text-caption text-gray-500 uppercase">Omkostnader (%)</span>
-                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                  <input 
-                    type="number" 
-                    className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
-                    value={settings?.fOrg ? Math.round(settings.fOrg * 100) : 0}
-                    onChange={(e) => updateSettings?.('fOrg', Number(e.target.value) / 100)}
-                  />
-                  <span className="text-gray-400">%</span>
-                </div>
-              </div>
 
-              <div className="flex justify-between items-center py-1">
-                <span className="text-caption text-gray-500 uppercase">Vinst Mat (%)</span>
-                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                  <input 
-                    type="number" 
-                    className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
-                    value={settings?.vMatP ? Math.round(settings.vMatP * 100) : 0}
-                    onChange={(e) => updateSettings?.('vMatP', Number(e.target.value) / 100)}
-                  />
-                  <span className="text-gray-400">%</span>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center py-1">
-                <span className="text-caption text-gray-500 uppercase">Vinst Arb (%)</span>
-                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                  <input 
-                    type="number" 
-                    className="w-12 text-right bg-transparent outline-none focus:bg-gray-50"
-                    value={settings?.vArbP ? Math.round(settings.vArbP * 100) : 0}
-                    onChange={(e) => updateSettings?.('vArbP', Number(e.target.value) / 100)}
-                  />
-                  <span className="text-gray-400">%</span>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center py-1 border-t border-gray-200 pt-3 mt-1">
-                <span className="text-caption text-gray-500 uppercase">Täckningsgrad</span>
-                <span className="text-body num font-semibold text-[var(--green)]">{tg1.toFixed(1)}%</span>
-              </div>
-
-              <div className="flex justify-between items-center py-2 border-b-2 border-primary mb-2">
-                <span className="text-caption font-bold uppercase text-primary">Anbudssumma</span>
-                <span className="text-body num font-bold text-primary text-xl tracking-tight">{formatKr(anbud)}</span>
-              </div>
-              
-              <div className="bg-[var(--blue-lt)] rounded px-2 py-2 mb-2 border border-[var(--blue)]/20">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-caption text-[var(--blue-dk)] font-semibold uppercase flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[14px]">security</span> Riskanalys
-                  </span>
-                  <span className="text-[10px] bg-white text-[var(--blue)] px-1.5 py-0.5 rounded-full font-bold border border-[var(--blue)]/30" title="Säkerhetstal (0-1)">
-                    {(riskResult.sakerhetstal * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs text-[var(--blue-dk)] py-0.5">
-                  <span>P50 (Troligast)</span>
-                  <span className="font-mono">{formatKr(riskResult.p50 * (anbud/projNetto || 1))}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs text-[var(--blue-dk)] py-0.5 font-bold">
-                  <span>P85 (Konservativt)</span>
-                  <span className="font-mono">{formatKr(riskResult.p85 * (anbud/projNetto || 1))}</span>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center py-1 mt-2">
-                <span className="text-caption text-gray-500 uppercase">Totalt arbete</span>
-                <span className="text-body num font-semibold text-gray-800">{Math.round(totTim)} h</span>
-              </div>
-
-              <div className="flex justify-between items-center py-1">
-                <span className="text-caption text-gray-500 uppercase">Total CO2e</span>
-                <span className="text-body num font-semibold text-gray-800">{Math.round(calcResult.co2.total)} kg</span>
-              </div>
-
-              <div className="flex justify-between items-center py-1">
-                <span className="text-caption text-gray-500 uppercase flex items-center gap-2">
-                  BTA (m²)
-                </span>
-                <div className="flex items-center gap-1 border-b border-gray-300 pb-0.5">
-                  <input 
-                    type="number" 
-                    className="w-16 text-right bg-transparent outline-none focus:bg-gray-50"
-                    value={settings?.bta || ''}
-                    onChange={(e) => updateSettings?.('bta', Number(e.target.value))}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
-                <span className="text-caption text-gray-500 uppercase">CO2e / m² BTA</span>
-                <span className="text-body num font-semibold text-gray-800">{(settings?.bta && settings.bta > 0) ? (calcResult.co2.total / settings.bta).toFixed(1) : '-'} kg</span>
-              </div>
-              
-              <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-200">
-                <button className="btn btn-secondary border border-gray-300 bg-white shadow-sm hover:bg-gray-50 text-xs px-2 py-1.5 font-medium flex justify-center items-center" onClick={handleExportExcel}>
-                  <i className="fa-solid fa-file-excel text-green-600 mr-2"></i> Exportera Kalkyl (Excel)
-                </button>
-                <button className="btn btn-primary bg-[var(--blue)] text-white shadow-sm hover:bg-[var(--blue-dk)] text-xs px-2 py-1.5 font-medium flex justify-center items-center" onClick={handleExportPdf}>
-                  <i className="fa-solid fa-file-pdf mr-2"></i> Exportera Anbud (PDF)
-                </button>
-              </div>
-            </div>
-          </div>
-        </aside>
       </div>
 
       <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Bekräfta borttagning">

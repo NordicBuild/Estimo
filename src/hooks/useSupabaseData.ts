@@ -66,6 +66,7 @@ export function useSupabaseData(
   const [dataSpaceId, setDataSpaceId] = useState<string | null>(null);
   const [dbReady, setDbReady] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'manager' | 'user' | null>(null);
   
   const [customCategories, setCustomCategories] = useState<string[]>(() => {
@@ -106,45 +107,33 @@ export function useSupabaseData(
     }
 
     const loadData = async () => {
-      let allUsers: any[] = [];
       try {
-        const { data: usersData, error } = await supabase.from('app_state').select('data').eq('id', 'global_users').single();
-        if (error) throw error;
-        allUsers = usersData?.data || [];
-      } catch(e) {
-        const local = localStorage.getItem('betong_global_users');
-        if (local) allUsers = JSON.parse(local);
-      }
-      let appUser = allUsers.find((u: any) => u.email.toLowerCase() === user.email?.toLowerCase());
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('company_id, role')
+          .eq('id', user.id)
+          .single();
 
-      const isHardcodedAdmin = user.email?.toLowerCase() === 'mtoumia@gmail.com' || user.email?.toLowerCase().includes('admin');
-      const isHardcodedUser = user.email?.toLowerCase() === 'user@estimo.se';
+        if (profileError || !profile || !profile.company_id) {
+          setNeedsOnboarding(true);
+          setDataLoaded(true);
+          return;
+        }
 
-      if (isHardcodedAdmin) {
-        appUser = { id: appUser?.id || 'admin_override', email: user.email, role: 'admin', companyId: appUser?.companyId || `admin_comp_${user.id}` };
-      } else if (!appUser && isHardcodedUser) {
-        appUser = { id: 'user_override', email: user.email, role: 'user', companyId: `user_comp_demo` };
-      }
+        if (appMode === 'admin' && profile.role !== 'admin') {
+          setAccessDenied(true);
+          setDataLoaded(true);
+          return;
+        }
 
-      if (!appUser) {
-        setAccessDenied(true);
-        setDataLoaded(true);
-        return;
-      }
-
-      if (appMode === 'admin' && appUser.role !== 'admin') {
-        setAccessDenied(true);
-        setDataLoaded(true);
-        return;
-      }
-
-      setCurrentUserRole(appUser.role);
-      const dsId = appUser.companyId && appUser.role !== 'admin' ? appUser.companyId : user.id;
-      setDataSpaceId(dsId);
+        setCurrentUserRole(profile.role);
+        const dsId = profile.company_id;
+        setDataSpaceId(dsId);
 
       const { data: sessionData, error: sessionError } = await supabase
         .from('app_state')
         .select('id, data')
+        .eq('company_id', dsId)
         .in('id', [
           `materials_${dsId}`,
           `arbetsmoments_${dsId}`,
@@ -191,7 +180,7 @@ export function useSupabaseData(
           const localMats = localStorage.getItem('betong_materials');
           const oldMatsDoc = sessionData.find(d => d.id === 'materials_all');
           const dataToSet = localMats ? JSON.parse(localMats) : (oldMatsDoc ? oldMatsDoc.data as Material[] : INITIAL_MATERIALS);
-          try { await supabase.from('app_state').upsert({ id: `materials_${dsId}`, data: dataToSet }); } catch(e) {}
+          try { await supabase.from('app_state').upsert({ id: `materials_${dsId}`, company_id: dsId, data: dataToSet }); } catch(e) {}
           setMaterials(dataToSet);
         }
 
@@ -202,7 +191,7 @@ export function useSupabaseData(
           const localArbs = localStorage.getItem('betong_arbetsmoments');
           const oldArbDoc = sessionData.find(d => d.id === 'arbetsmoments_all');
           const dataToSet = localArbs ? JSON.parse(localArbs) : (oldArbDoc ? oldArbDoc.data as ArbetsMoment[] : INITIAL_ARBETS_DATA);
-          try { await supabase.from('app_state').upsert({ id: `arbetsmoments_${dsId}`, data: dataToSet }); } catch(e) {}
+          try { await supabase.from('app_state').upsert({ id: `arbetsmoments_${dsId}`, company_id: dsId, data: dataToSet }); } catch(e) {}
           setArbetsData(dataToSet);
         }
 
@@ -215,7 +204,7 @@ export function useSupabaseData(
         } else {
           const oldProjectsDoc = sessionData.find(d => d.id === `projects_${user.id}`);
           if (oldProjectsDoc) {
-            await supabase.from('app_state').upsert({ id: `projects_${dsId}`, data: oldProjectsDoc.data });
+            await supabase.from('app_state').upsert({ id: `projects_${dsId}`, company_id: dsId, data: oldProjectsDoc.data });
             setProjects(oldProjectsDoc.data || []);
           }
         }
@@ -280,6 +269,10 @@ export function useSupabaseData(
         if (localTpls) setByggdelTemplates(JSON.parse(localTpls));
       }
 
+      } catch (err) {
+        console.error("Error loading data:", err);
+      }
+
       setDataLoaded(true);
       return null;
     };
@@ -318,49 +311,49 @@ export function useSupabaseData(
 
   useEffect(() => {
     localStorage.setItem('betong_folders', JSON.stringify(folders));
-    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `folders_${dataSpaceId}`, data: folders }).then(({error}) => {
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `folders_${dataSpaceId}`, company_id: dataSpaceId, data: folders }).then(({error}) => {
       if (error) console.warn("folder sync error", error);
     });
   }, [folders, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_active_project_id', activeProjectId);
-    if (dbReady && user) supabase.from('app_state').upsert({ id: `active_project_id_${user.id}`, data: activeProjectId }).then(({error}) => {
+    if (dbReady && user && dataSpaceId) supabase.from('app_state').upsert({ id: `active_project_id_${user.id}`, company_id: dataSpaceId, data: activeProjectId }).then(({error}) => {
       if (error) console.warn("active project sync error", error);
     });
   }, [activeProjectId, user, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_custom_categories', JSON.stringify(customCategories));
-    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, data: customCategories }).then(({error}) => {
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: customCategories }).then(({error}) => {
       if (error) console.warn("custom categories sync error", error);
     });
   }, [customCategories, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_company_info', JSON.stringify(companyInfo));
-    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_info_${dataSpaceId}`, data: companyInfo }).then(({error}) => {
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_info_${dataSpaceId}`, company_id: dataSpaceId, data: companyInfo }).then(({error}) => {
       if (error) console.warn("company info sync error", error);
     });
   }, [companyInfo, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_user_settings', JSON.stringify(userSettings));
-    if (dbReady && user) supabase.from('app_state').upsert({ id: `user_settings_${user.id}`, data: userSettings }).then(({error}) => {
+    if (dbReady && user && dataSpaceId) supabase.from('app_state').upsert({ id: `user_settings_${user.id}`, company_id: dataSpaceId, data: userSettings }).then(({error}) => {
       if (error) console.warn("user settings sync error", error);
     });
   }, [userSettings, user, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_company_tidsfaktorer', JSON.stringify(companyTidsfaktorer));
-    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_tidsfaktorer_${dataSpaceId}`, data: companyTidsfaktorer }).then(({error}) => {
+    if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_tidsfaktorer_${dataSpaceId}`, company_id: dataSpaceId, data: companyTidsfaktorer }).then(({error}) => {
       if (error) console.warn("companyTidsfaktorer sync error", error);
     });
   }, [companyTidsfaktorer, dataSpaceId, dbReady]);
 
   useEffect(() => {
     if (projects.length > 0) {
-      if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `projects_${dataSpaceId}`, data: projects }).then(({error}) => {
+      if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `projects_${dataSpaceId}`, company_id: dataSpaceId, data: projects }).then(({error}) => {
         if (error) console.warn("projects sync error", error);
       });
     }
@@ -417,6 +410,7 @@ export function useSupabaseData(
     dataLoaded, setDataLoaded,
     dataSpaceId, setDataSpaceId,
     accessDenied, setAccessDenied,
+    needsOnboarding, setNeedsOnboarding,
     currentUserRole, setCurrentUserRole,
     customCategories, setCustomCategories,
     byggdelTemplates, addTemplate, deleteTemplate,

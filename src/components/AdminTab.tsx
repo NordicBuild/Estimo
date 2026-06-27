@@ -74,6 +74,7 @@ export function AdminTab({
 
   // Invoices
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoiceRecordId, setInvoiceRecordId] = useState<string | null>(null);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
@@ -108,10 +109,11 @@ export function AdminTab({
     try {
       setLoadingInvoices(true);
       setDbError(false);
-      const { data, error } = await supabase.from("app_state").select("data").eq("id", "admin_invoices").single();
+      const { data, error } = await supabase.from("admin_invoices").select("id, data").limit(1).maybeSingle();
       if (error && (error.code === "PGRST205" || error.code === "42P01" || error.code === "42501" || (error as any).message?.includes('not found'))) setDbError(true);
       if (error && error.code !== "PGRST116" && error.code !== "PGRST205" && error.code !== "42P01" && error.code !== "42501") throw error;
       if (data && data.data) {
+        setInvoiceRecordId(data.id);
         setInvoices(data.data as Invoice[]);
       } else {
         const defaultInvoices: Invoice[] = [
@@ -132,8 +134,14 @@ export function AdminTab({
   const saveInvoices = async (newInvoices: Invoice[]) => {
     setInvoices(newInvoices);
     try {
-      const { error } = await supabase.from("app_state").upsert({ id: "admin_invoices", data: newInvoices });
-      if (error && error.code !== "PGRST205") throw error;
+      if (invoiceRecordId) {
+        const { error } = await supabase.from("admin_invoices").update({ data: newInvoices }).eq("id", invoiceRecordId);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("admin_invoices").insert({ data: newInvoices }).select("id").single();
+        if (data) setInvoiceRecordId(data.id);
+        if (error) throw error;
+      }
     } catch (err) {
       console.error("Fel vid sparande av fakturor", err);
       setDbError(true);
@@ -159,9 +167,7 @@ export function AdminTab({
   }, [companies]);
 
   useEffect(() => {
-    if (appUsers.length > 0) {
-      localStorage.setItem("betong_global_users", JSON.stringify(appUsers));
-    }
+    // Legacy local storage, doing nothing for now.
   }, [appUsers]);
 
   const loadCompanyData = async (companyId: string) => {
@@ -299,8 +305,6 @@ export function AdminTab({
           if (payload.new && "id" in payload.new) {
             if (payload.new.id === "global_companies")
               setCompanies((payload.new as any).data || []);
-            if (payload.new.id === "global_users")
-              setAppUsers((payload.new as any).data || []);
           }
         },
       )
@@ -312,55 +316,49 @@ export function AdminTab({
   }, []);
 
   const loadAdminData = async () => {
-    let loadedCompanies = [];
-    let loadedUsers = [];
-    
     try {
       setLoading(true);
       setDbError(false);
+      
       const { data: compData, error: compErr } = await supabase
-        .from("app_state")
-        .select("data")
-        .eq("id", "global_companies")
-        .single();
+        .from("companies")
+        .select("*");
         
       if (compErr) {
         if (compErr.code === "PGRST205" || compErr.code === "42P01" || compErr.code === "42501" || (compErr as any).message?.includes('not found')) setDbError(true);
         if (compErr.code !== "PGRST116" && compErr.code !== "PGRST205" && compErr.code !== "42P01" && compErr.code !== "42501") throw compErr;
       }
       
-      if (compData && compData.data) {
-        setCompanies(compData.data as Company[]);
-        loadedCompanies = compData.data;
+      if (compData) {
+        setCompanies(compData.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          orgNr: c.org_nr || "",
+          subscriptionActive: true
+        })));
       }
 
       const { data: userData, error: userErr } = await supabase
-        .from("app_state")
-        .select("data")
-        .eq("id", "global_users")
-        .single();
+        .from("profiles")
+        .select("*");
         
       if (userErr) {
         if (userErr.code === "PGRST205" || userErr.code === "42P01" || userErr.code === "42501" || (userErr as any).message?.includes('not found')) setDbError(true);
         if (userErr.code !== "PGRST116" && userErr.code !== "PGRST205" && userErr.code !== "42P01" && userErr.code !== "42501") throw userErr;
       }
       
-      if (userData && userData.data) {
-        setAppUsers(userData.data as AppUser[]);
-        loadedUsers = userData.data;
+      if (userData) {
+        setAppUsers(userData.map((u: any) => ({
+          id: u.id,
+          email: u.email || u.name || "Okänd",
+          role: u.role as "admin" | "manager" | "user",
+          companyId: u.company_id
+        })));
       }
     } catch (err) {
       console.error(err);
       showNotification("Använder lokal lagring (" + (err as any).message + ")", "error");
     } finally {
-      if (loadedCompanies.length === 0) {
-        const local = localStorage.getItem("betong_global_companies");
-        if (local) setCompanies(JSON.parse(local));
-      }
-      if (loadedUsers.length === 0) {
-        const local = localStorage.getItem("betong_global_users");
-        if (local) setAppUsers(JSON.parse(local));
-      }
       setLoading(false);
     }
   };
@@ -368,20 +366,21 @@ export function AdminTab({
   const handleAddCompany = async () => {
     if (!newCompany.name) return;
     try {
-      const comp: Company = {
-        id: "comp_" + Date.now(),
-        name: newCompany.name,
-        orgNr: newCompany.orgNr,
-        subscriptionActive: true,
-      };
-
-      const updatedCompanies = [...companies, comp];
-      setCompanies(updatedCompanies);
+      const { data, error } = await supabase
+        .from("companies")
+        .insert([{ name: newCompany.name, org_nr: newCompany.orgNr }])
+        .select()
+        .single();
+        
+      if (error) throw error;
+      
+      setCompanies([...companies, {
+        id: data.id,
+        name: data.name,
+        orgNr: data.org_nr || "",
+        subscriptionActive: true
+      }]);
       setNewCompany({ name: "", orgNr: "" });
-      const { error } = await supabase
-        .from("app_state")
-        .upsert({ id: "global_companies", data: updatedCompanies });
-      if (error && error.code !== "PGRST205") throw error;
       showNotification("Företag tillagt.", "success");
     } catch (err) {
       console.error(err);
@@ -393,47 +392,14 @@ export function AdminTab({
   };
 
   const handleAddUser = async (overrideCompanyId?: string) => {
-    const compId = overrideCompanyId || newUser.companyId;
-    if (!newUser.email || !compId) return;
-    try {
-      const rawPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
-      const userEmail = newUser.email;
-
-      const u: AppUser = {
-        id: "u_" + Date.now(),
-        email: newUser.email,
-        password: rawPassword,
-        role: newUser.role,
-        companyId: compId,
-      };
-
-      const updatedUsers = [...appUsers, u];
-      setAppUsers(updatedUsers);
-      setNewUser({ email: "", role: "user", companyId: "" });
-      const { error } = await supabase
-        .from("app_state")
-        .upsert({ id: "global_users", data: updatedUsers });
-      if (error && error.code !== "PGRST205") throw error;
-      
-      setGeneratedCredentials({ email: userEmail, password: rawPassword });
-      showNotification("Användare tillagd.", "success");
-    } catch (err: any) {
-      console.error(err);
-      showNotification(
-        "Kunde inte lägga till användare: " + (err.message || "Okänt fel"),
-        "error",
-      );
-    }
+    showNotification("Användare kan endast skapas via inloggning. Be användaren logga in först.", "error");
   };
 
   const handleRemoveCompany = async (id: string) => {
     try {
-      const updatedCompanies = companies.filter((c) => c.id !== id);
-      setCompanies(updatedCompanies);
-      const { error } = await supabase
-        .from("app_state")
-        .upsert({ id: "global_companies", data: updatedCompanies });
-      if (error && error.code !== "PGRST205") throw error;
+      const { error } = await supabase.from("companies").delete().eq("id", id);
+      if (error) throw error;
+      setCompanies(companies.filter((c) => c.id !== id));
       showNotification("Företag borttaget.", "success");
     } catch (err: any) {
       console.error(err);
@@ -446,12 +412,9 @@ export function AdminTab({
 
   const handleRemoveUser = async (id: string) => {
     try {
-      const updatedUsers = appUsers.filter((u) => u.id !== id);
-      setAppUsers(updatedUsers);
-      const { error } = await supabase
-        .from("app_state")
-        .upsert({ id: "global_users", data: updatedUsers });
-      if (error && error.code !== "PGRST205") throw error;
+      const { error } = await supabase.from("profiles").delete().eq("id", id);
+      if (error) throw error;
+      setAppUsers(appUsers.filter((u) => u.id !== id));
       showNotification("Användare borttagen.", "success");
     } catch (err: any) {
       console.error(err);
@@ -465,15 +428,16 @@ export function AdminTab({
   const handleUpdateUser = async () => {
     if (!editingUser || !editingUser.email) return;
     try {
-      const updatedUsers = appUsers.map((u) =>
-        u.id === editingUser.id ? editingUser : u,
-      );
-      setAppUsers(updatedUsers);
-      setEditingUser(null);
       const { error } = await supabase
-        .from("app_state")
-        .upsert({ id: "global_users", data: updatedUsers });
-      if (error && error.code !== "PGRST205") throw error;
+        .from("profiles")
+        .update({ role: editingUser.role, company_id: editingUser.companyId })
+        .eq("id", editingUser.id);
+      if (error) throw error;
+      
+      setAppUsers(appUsers.map((u) =>
+        u.id === editingUser.id ? editingUser : u,
+      ));
+      setEditingUser(null);
       showNotification("Användare uppdaterad.", "success");
     } catch (err: any) {
       console.error(err);
@@ -488,15 +452,16 @@ export function AdminTab({
     if (e) e.stopPropagation();
     if (!editingCompany || !editingCompany.name) return;
     try {
-      const updatedCompanies = companies.map((c) =>
-        c.id === editingCompany.id ? editingCompany : c,
-      );
-      setCompanies(updatedCompanies);
-      setEditingCompany(null);
       const { error } = await supabase
-        .from("app_state")
-        .upsert({ id: "global_companies", data: updatedCompanies });
-      if (error && error.code !== "PGRST205") throw error;
+        .from("companies")
+        .update({ name: editingCompany.name, org_nr: editingCompany.orgNr })
+        .eq("id", editingCompany.id);
+      if (error) throw error;
+
+      setCompanies(companies.map((c) =>
+        c.id === editingCompany.id ? editingCompany : c,
+      ));
+      setEditingCompany(null);
       showNotification("Företag uppdaterat.", "success");
     } catch (err: any) {
       console.error(err);
@@ -1135,23 +1100,9 @@ NOTIFY pgrst, 'reload schema';
                       <option value="admin">Administratör</option>
                     </select>
                     <button
-                      className="bg-purple-500 hover:bg-purple-600 text-white w-7 h-7 rounded flex items-center justify-center transition-colors"
-                      onClick={async () => {
-                        const newPass = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
-                        const updated = { ...editingUser, password: newPass };
-                        
-                        try {
-                          const updatedUsers = appUsers.map((u) => u.id === editingUser.id ? updated : u);
-                          setAppUsers(updatedUsers);
-                          setEditingUser(null);
-                          const { error } = await supabase.from("app_state").upsert({ id: "global_users", data: updatedUsers });
-                          if (error && error.code !== "PGRST205") throw error;
-                          setGeneratedCredentials({ email: updated.email, password: newPass });
-                        } catch (err: any) {
-                          showNotification("Kunde inte uppdatera lösenordet", "error");
-                        }
-                      }}
-                      title="Generera nytt lösenord & Spara"
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-700 w-7 h-7 rounded flex items-center justify-center transition-colors"
+                      onClick={() => showNotification("Lösenord återställs via inloggningsskärmen av användaren.", "error")}
+                      title="Generera nytt lösenord (avaktiverat)"
                     >
                       <i className="fa-solid fa-key"></i>
                     </button>

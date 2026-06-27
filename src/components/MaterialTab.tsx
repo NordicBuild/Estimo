@@ -1,5 +1,5 @@
 import React, { useState, Fragment, useRef, useEffect } from 'react';
-import * as XLSX from 'xlsx';
+// import removed
 import { Material, DEFAULT_MATERIAL } from '../data';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { EXAMPLE_CO2_FACTORS } from '../climate/co2';
@@ -65,7 +65,8 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
   const [olcaLoading, setOlcaLoading] = useState(false);
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet([
       {
         Kategori: 'Betong',
@@ -83,10 +84,11 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
     XLSX.writeFile(wb, 'Material_Mall.xlsx');
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const XLSX = await import('xlsx');
     const reader = new FileReader();
     reader.onload = (event) => {
       try {

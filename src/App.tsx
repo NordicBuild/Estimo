@@ -1,25 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { INITIAL_MATERIALS, INITIAL_ARBETS_DATA, Material, ArbetsMoment, Byggdel, INITIAL_TIDSFAKTORER, TYPE_UNIT, ProjectInfo, CompanyInfo, INITIAL_PROJECT_INFO, INITIAL_COMPANY_INFO, SavedProject, ProjectFolder } from "./data";
 import { useCalculation } from "./useCalculation";
-import { ByggdelSketch } from "./components/ByggdelSketch";
-import { ProjektInfoTab } from "./components/ProjektInfoTab";
-import { MaterialTab } from "./components/MaterialTab";
-import { KalkylTab } from "./components/KalkylTab";
-import { ArbetsmomentTab } from "./components/ArbetsmomentTab";
-import { SammanstallnTab } from "./components/SammanstallnTab";
-import { AnbudTab } from "./components/AnbudTab";
-import { AnalysTab } from "./components/AnalysTab";
-import { PlaneringTab } from "./components/PlaneringTab";
-import { SlutsidaTab } from "./components/SlutsidaTab";
-import { HemsidaTab } from "./components/HemsidaTab";
+// import removed
 import { AdminTab } from "./components/AdminTab";
-import { InkopTab } from "./components/InkopTab";
-import { PrognosTab } from "./components/PrognosTab";
-import { ReceptbibliotekTab } from "./components/ReceptbibliotekTab";
-import { PdfMeasurementTab } from "./components/PdfMeasurementTab";
-import { BIMMeasurementTab } from "./components/BIMMeasurementTab";
 import { ByggdelModal } from "./components/ByggdelModal";
 import { ErfarenhetModal } from "./components/ErfarenhetModal";
+import { TabRouter } from "./components/Workspace/TabRouter";
 import { Header } from "./components/Header";
 import { useDialog } from './hooks/useDialog';
 import { useAppAuth } from './hooks/useAppAuth';
@@ -28,9 +14,13 @@ import { useSupabaseData } from './hooks/useSupabaseData';
 import { WorkspaceActions, WorkspaceNav } from "./components/WorkspaceToolbar";
 import { supabase, logout, loginWithGoogle } from "./supabase";
 import { User } from '@supabase/supabase-js';
-import * as XLSX from "xlsx";
+// import removed
 import { calculateBaseMoments, calculateDefaultMoments } from "./calculationHelpers";
 
+
+import { AuthProvider } from './state/AuthContext';
+import { ProjectDataProvider } from './state/ProjectDataContext';
+import { KalkylHistoryProvider } from './state/KalkylHistoryContext';
 
 export default function App() {
   const [appMode, setAppMode] = useState<'kalkyl' | 'admin'>(() => (localStorage.getItem('betong_app_mode') as any) || 'kalkyl');
@@ -49,10 +39,12 @@ export default function App() {
     manualPassword,
     setManualPassword,
     manualLoginError,
+    setManualLoginError,
     loginMode,
     setLoginMode,
     handleManualLogin,
-    handleLogout
+    handleLogout,
+    loginWithGoogle
   } = useAppAuth(appMode, setAppMode);
 
   useEffect(() => {
@@ -91,6 +83,7 @@ export default function App() {
     dataLoaded, setDataLoaded,
     dataSpaceId, setDataSpaceId,
     accessDenied, setAccessDenied,
+    needsOnboarding, setNeedsOnboarding,
     currentUserRole, setCurrentUserRole,
     customCategories, setCustomCategories,
     byggdelTemplates, addTemplate, deleteTemplate,
@@ -396,7 +389,7 @@ export default function App() {
     localStorage.setItem('betong_materials', JSON.stringify(newMats));
     if (user && dataSpaceId) {
       try {
-        const { error } = await supabase.from('app_state').upsert({ id: `materials_${dataSpaceId}`, data: newMats });
+        const { error } = await supabase.from('app_state').upsert({ id: `materials_${dataSpaceId}`, company_id: dataSpaceId, data: newMats });
         if (error) {
           console.warn("pushMaterials error:", error);
           showNotification("Fel vid databassparning (Material), sparat lokalt. " + error.message, "error");
@@ -410,7 +403,7 @@ export default function App() {
     localStorage.setItem('betong_arbetsmoments', JSON.stringify(newArbs));
     if (user && dataSpaceId) {
       try {
-        const { error } = await supabase.from('app_state').upsert({ id: `arbetsmoments_${dataSpaceId}`, data: newArbs });
+        const { error } = await supabase.from('app_state').upsert({ id: `arbetsmoments_${dataSpaceId}`, company_id: dataSpaceId, data: newArbs });
         if (error) {
           console.warn("pushArbetsData error:", error);
           showNotification("Fel vid databassparning (Arbetsmoment), sparat lokalt. " + error.message, "error");
@@ -493,7 +486,7 @@ export default function App() {
     setCustomCategories(prev => {
       const newCats = prev.includes(cat) ? prev : [...prev, cat];
       if (user && dataSpaceId) {
-        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, data: newCats });
+        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats });
       }
       return newCats;
     });
@@ -503,7 +496,7 @@ export default function App() {
     setCustomCategories(cats => {
       const newCats = cats.map(c => c === oldCat ? newCat : c);
       if (user && dataSpaceId) {
-        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, data: newCats });
+        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats });
       }
       return newCats;
     });
@@ -513,7 +506,7 @@ export default function App() {
     setCustomCategories(cats => {
       const newCats = cats.filter(c => c !== cat);
       if (user && dataSpaceId) {
-        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, data: newCats });
+        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats });
       }
       return newCats;
     });
@@ -550,10 +543,11 @@ export default function App() {
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const XLSX = await import('xlsx');
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
@@ -606,7 +600,8 @@ export default function App() {
     reader.readAsBinaryString(file);
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await import('xlsx');
     // 1. Projektinfo
     const projRows = [
       { 'Fält': 'Projektnummer', 'Värde': projectInfo.nr },
@@ -752,7 +747,8 @@ export default function App() {
     XLSX.writeFile(wb, `${projectInfo.name || 'Kalkyl'}_Export.xlsx`);
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet([
       { 'Typ': '24.1_Fundament', 'Namn': 'Plint 1', 'Mängd': 1, 'Längd': 1.2, 'Bredd': 1.2, 'Höjd': 0.6, 'Kommentar': 'Exempel' },
       { 'Typ': '27_Platta_pa_mark', 'Namn': 'Bottenplatta', 'Mängd': 1, 'Längd': 10, 'Bredd': 8, 'Höjd': 0.2, 'Kommentar': 'Garage' },
@@ -1074,8 +1070,8 @@ export default function App() {
       const { data: aData } = await supabase.from('app_state').select('data').eq('id', 'arbetsmoments_all').single();
       if (aData) baseArb = aData.data as ArbetsMoment[];
       
-      await supabase.from('app_state').upsert({ id: `materials_${dataSpaceId}`, data: baseMats });
-      await supabase.from('app_state').upsert({ id: `arbetsmoments_${dataSpaceId}`, data: baseArb });
+      await supabase.from('app_state').upsert({ id: `materials_${dataSpaceId}`, company_id: dataSpaceId, data: baseMats });
+      await supabase.from('app_state').upsert({ id: `arbetsmoments_${dataSpaceId}`, company_id: dataSpaceId, data: baseArb });
       await supabase.from('app_state').delete().in('id', [
         `folders_${dataSpaceId}`,
         `projects_${dataSpaceId}`,
@@ -1221,6 +1217,61 @@ export default function App() {
     );
   }
 
+  if (needsOnboarding && user) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-4">
+        <div className="bg-white p-10 rounded-2xl shadow-xl text-center max-w-md w-full">
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">Välkommen!</h1>
+            <p className="text-gray-600 mb-8">
+              Det verkar som att du inte är kopplad till ett företag än. 
+              Klicka nedan för att registrera ditt konto och ett nytt företag.
+            </p>
+            <button 
+              onClick={async () => {
+                const companyName = prompt("Ange ditt företagsnamn:");
+                if (!companyName) return;
+                
+                try {
+                  const { data: company, error: compErr } = await supabase
+                    .from('companies')
+                    .insert([{ name: companyName }])
+                    .select()
+                    .single();
+                  
+                  if (compErr) throw compErr;
+                  
+                  const { error: profErr } = await supabase
+                    .from('profiles')
+                    .insert([{ 
+                      id: user.id, 
+                      company_id: company.id, 
+                      role: 'admin',
+                      email: user.email,
+                      name: user.email?.split('@')[0] || 'Användare'
+                    }]);
+                    
+                  if (profErr) throw profErr;
+                  
+                  window.location.reload();
+                } catch (e: any) {
+                  showNotification("Kunde inte registrera företag: " + e.message, "error");
+                }
+              }} 
+              className="w-full bg-[var(--blue)] hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors mb-4"
+            >
+              Registrera företag
+            </button>
+            <button onClick={() => {
+              handleLogout();
+              setNeedsOnboarding(false);
+            }} className="text-sm text-gray-500 hover:text-gray-800 transition-colors">
+              Gå tillbaka / Logga ut
+            </button>
+        </div>
+      </div>
+    );
+  }
+
   if (appMode === 'admin') {
     return (
       <div className="min-h-screen bg-background text-on-background font-sans flex flex-col h-screen overflow-hidden">
@@ -1315,8 +1366,25 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-on-background font-sans flex flex-col h-screen overflow-hidden">
-      <Header
+    <AuthProvider value={{
+        user, authInitialized, manualEmail, setManualEmail, manualPassword, setManualPassword,
+        manualLoginError, setManualLoginError, loginMode, setLoginMode, handleManualLogin, handleLogout, loginWithGoogle, appMode, setAppMode
+    }}>
+      <ProjectDataProvider value={{
+        folders, setFolders, projects, setProjects, activeProjectId, setActiveProjectId, projectInfo, setProjectInfo,
+        byggdelar, setByggdelar: setSupabaseByggdelar, settings, setSettings, companyInfo, setCompanyInfo, userSettings, setUserSettings,
+        materials, setMaterials, arbetsData, setArbetsData, companyTidsfaktorer, setCompanyTidsfaktorer, dataLoaded, setDataLoaded,
+        dataSpaceId, setDataSpaceId, accessDenied, setAccessDenied, needsOnboarding, setNeedsOnboarding, currentUserRole, setCurrentUserRole,
+        customCategories, setCustomCategories, byggdelTemplates, addTemplate, deleteTemplate, switchProject
+      }}>
+        <KalkylHistoryProvider value={{ 
+          byggdelHistory, historyIndex, undoByggdelar, redoByggdelar,
+          calcResult, addParts: addMeasurementParts, addPartFromTemplate: addTemplatePart, toggleByggdel, toggleAllByggdelar,
+          reorderByggdelar, removePart, removeMultipleParts, updateMultipleParts, clonePart, togglePartActive, toggleTypeActive,
+          cloneType, openModal, updateMoment, duplicateMoment, updateMaterialPrice, addMoment, removeMoment, updatePartQty, updatePartAntal
+        }}>
+          <div className="min-h-screen bg-background text-on-background font-sans flex flex-col h-screen overflow-hidden">
+            <Header
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         activeTab={activeTab}
@@ -1346,249 +1414,139 @@ export default function App() {
 
           <div className="flex-1 relative flex min-w-0 min-h-0">
             <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf', 'bim'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
-        {activeTab === 'hemsida' && (
-          <HemsidaTab 
-            user={user}
-            projects={projects}
-            folders={folders}
-            activeProjectId={activeProjectId}
-            companyName={companyInfo.name}
-            createFolder={createFolder}
-            createProject={createProject}
-            renameFolder={renameFolder}
-            deleteFolder={deleteFolder}
-            renameProject={renameProject}
-            duplicateProject={duplicateProject}
-            deleteProject={deleteProject}
-            switchProject={(id) => { switchProject(id); setActiveTab('projekt'); }}
-            reorderProjects={reorderProjects}
-            reorderFolders={reorderFolders}
-          />
-        )}
-        {activeTab === 'projekt' && (
-          <ProjektInfoTab 
-            projectInfo={projectInfo} 
-            setProjectInfo={setProjectInfo}
-            companyInfo={companyInfo}
-            setCompanyInfo={setCompanyInfo}
-            currentProject={projects.find(p => p.id === activeProjectId)}
-            saveVersion={(name) => {
+        <TabRouter 
+          activeTab={activeTab}
+          user={user}
+          projects={projects}
+          folders={folders}
+          activeProjectId={activeProjectId}
+          companyInfo={companyInfo}
+          createFolder={createFolder}
+          createProject={createProject}
+          renameFolder={renameFolder}
+          deleteFolder={deleteFolder}
+          renameProject={renameProject}
+          duplicateProject={duplicateProject}
+          deleteProject={deleteProject}
+          switchProject={(id) => { switchProject(id); setActiveTab('projekt'); }}
+          reorderProjects={reorderProjects}
+          reorderFolders={reorderFolders}
+          projectInfo={projectInfo}
+          setProjectInfo={setProjectInfo}
+          setCompanyInfo={setCompanyInfo}
+          currentProject={projects.find(p => p.id === activeProjectId)}
+          saveVersion={(name) => {
+            setProjects(prev => prev.map(p => {
+              if (p.id === activeProjectId) {
+                return { 
+                  ...p, 
+                  versions: [...(p.versions || []), { id: 'v_' + Date.now(), name, timestamp: new Date().toISOString(), byggdelar: [...byggdelar] }],
+                  activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Sparade version', details: `Version "${name}" skapades` }, ...(p.activityLogs || [])]
+                };
+              }
+              return p;
+            }));
+            showNotification("Version sparad", "success");
+          }}
+          loadVersion={(version) => {
+            setByggdelar(version.byggdelar);
+            setProjects(prev => prev.map(p => {
+              if (p.id === activeProjectId) {
+                return {
+                  ...p,
+                  activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Laddade version', details: `Återställde till version "${version.name}"` }, ...(p.activityLogs || [])]
+                };
+              }
+              return p;
+            }));
+            showNotification("Version läst in: " + version.name, "success");
+          }}
+          deleteVersion={(vId) => {
+            confirmAction("Ta bort version", "Är du säker på att du vill ta bort denna version?", () => {
               setProjects(prev => prev.map(p => {
                 if (p.id === activeProjectId) {
+                  const vName = p.versions?.find(v => v.id === vId)?.name || 'Okänd';
                   return { 
                     ...p, 
-                    versions: [...(p.versions || []), { id: 'v_' + Date.now(), name, timestamp: new Date().toISOString(), byggdelar: [...byggdelar] }],
-                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Sparade version', details: `Version "${name}" skapades` }, ...(p.activityLogs || [])]
+                    versions: p.versions?.filter(v => v.id !== vId),
+                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Tog bort version', details: `Version "${vName}" raderades` }, ...(p.activityLogs || [])]
                   };
                 }
                 return p;
               }));
-              showNotification("Version sparad", "success");
-            }}
-            loadVersion={(version) => {
-              setByggdelar(version.byggdelar);
-              setProjects(prev => prev.map(p => {
-                if (p.id === activeProjectId) {
-                  return {
-                    ...p,
-                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Laddade version', details: `Återställde till version "${version.name}"` }, ...(p.activityLogs || [])]
-                  };
-                }
-                return p;
-              }));
-              showNotification("Version läst in: " + version.name, "success");
-            }}
-            deleteVersion={(vId) => {
-              confirmAction("Ta bort version", "Är du säker på att du vill ta bort denna version?", () => {
-                setProjects(prev => prev.map(p => {
-                  if (p.id === activeProjectId) {
-                    const vName = p.versions?.find(v => v.id === vId)?.name || 'Okänd';
-                    return { 
-                      ...p, 
-                      versions: p.versions?.filter(v => v.id !== vId),
-                      activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Tog bort version', details: `Version "${vName}" raderades` }, ...(p.activityLogs || [])]
-                    };
-                  }
-                  return p;
-                }));
-                showNotification("Version borttagen", "info");
-              });
-            }}
-            addActivityLog={(action, details) => {
-              setProjects(prev => prev.map(p => {
-                if (p.id === activeProjectId) {
-                  return {
-                    ...p,
-                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action, details }, ...(p.activityLogs || [])]
-                  };
-                }
-                return p;
-              }));
-            }}
-            byggdelar={byggdelar}
-            projectId={activeProjectId}
-            companyId={dataSpaceId}
-            onProjectCompleted={() => setShowErfarenhetModal(true)}
-          />
-        )}
-        {activeTab === 'kalkyl' && (
-          <KalkylTab 
-            byggdelar={byggdelar} 
-            calcResult={calcResult} 
-            materials={materials}
-            projectInfo={projectInfo}
-            companyInfo={companyInfo}
-            companyId={dataSpaceId}
-            addParts={addMeasurementParts}
-            settings={settings}
-            updateSettings={(key, val) => setSettings({ ...settings, [key]: val })}
-            byggdelTemplates={byggdelTemplates}
-            addTemplate={addTemplate}
-            deleteTemplate={deleteTemplate}
-            addPartFromTemplate={addTemplatePart}
-            toggleByggdel={toggleByggdel} 
-            toggleAllByggdelar={toggleAllByggdelar}
-            reorderByggdelar={reorderByggdelar}
-            removePart={removePart} 
-            removeMultipleParts={removeMultipleParts}
-            updateMultipleParts={updateMultipleParts}
-            clonePart={clonePart}
-            togglePartActive={togglePartActive}
-            toggleTypeActive={toggleTypeActive}
-            cloneType={cloneType}
-            openModal={openModal} 
-            updateMoment={updateMoment}
-            duplicateMoment={duplicateMoment}
-            updateMaterialPrice={updateMaterialPrice}
-            addMoment={addMoment}
-            removeMoment={removeMoment}
-            updatePartQty={updatePartQty}
-            updatePartAntal={updatePartAntal}
-          />
-        )}
-        {activeTab === 'pdf' && (
-          <PdfMeasurementTab addParts={addMeasurementParts} />
-        )}
-        {activeTab === 'bim' && (
-          <BIMMeasurementTab addParts={addMeasurementParts} projectId={activeProjectId} companyId={dataSpaceId} />
-        )}
-        {activeTab === 'material' && (
-          <MaterialTab 
-            materials={materials} 
-            customCategories={customCategories}
-            updateMaterial={updateMaterial} 
-            updateMultipleMaterials={updateMultipleMaterials}
-            addMaterial={addMaterial} 
-            addMaterials={addMaterials}
-            deleteMaterial={deleteMaterial} 
-            deleteMultipleMaterials={deleteMultipleMaterials}
-            addCategory={addCategory}
-            renameCategory={renameCategory}
-            removeCategory={removeCategory}
-            showNotification={showNotification}
-          />
-        )}
-        {activeTab === 'arbete' && (
-          <div className="p-8">
-            <ArbetsmomentTab 
-              arbetsData={arbetsData} 
-              customCategories={customArbCategories}
-              updateArbete={updateArbete} 
-              updateMultipleArbeten={updateMultipleArbeten}
-              addArbete={addArbete} 
-              addArbeten={addArbeten}
-              deleteArbete={deleteArbete} 
-              deleteMultipleArbeten={deleteMultipleArbeten}
-              addCategory={(cat) => setCustomArbCategories(prev => [...prev.filter(c => c !== cat), cat])}
-              showNotification={showNotification}
-            />
-          </div>
-        )}
-        {activeTab === 'analys' && <AnalysTab calcResult={calcResult} />}
-        {activeTab === 'sammanstalln' && <SammanstallnTab calcResult={calcResult} materials={materials} updateMaterial={updateMaterial} projectInfo={projectInfo} setProjectInfo={setProjectInfo} companyInfo={companyInfo} />}
-        {activeTab === 'planering' && <PlaneringTab calcResult={calcResult} byggdelar={byggdelar} reorderByggdelar={reorderByggdelar} reorderMoment={reorderMoment} updateStartDay={updateStartDay} updatePlanDates={updatePlanDates} updateMomentWorkers={updateMomentWorkers} updateByggdelColor={updateByggdelColor} />}
-        {activeTab === 'slutsida' && <SlutsidaTab settings={settings} setSettings={setSettings} calcResult={calcResult} />}
-        {activeTab === 'anbud' && <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} materials={materials} updateByggdelOfferPrice={updateByggdelOfferPrice} />}
-        {activeTab === 'inkop' && <InkopTab projectId={activeProjectId} byggdelar={byggdelar} calcResult={calcResult} companyId={dataSpaceId} onApplyOffert={handleApplyOffert} />}
-        {activeTab === 'prognos' && <PrognosTab projectId={activeProjectId} byggdelar={byggdelar} calcResult={calcResult} companyId={dataSpaceId} />}
-        {activeTab !== 'anbud' && (
-          <div style={{ position: 'absolute', top: '-10000px', left: 0, width: '1000px', zIndex: -1000, pointerEvents: 'none' }}>
-            <AnbudTab calcResult={calcResult} byggdelar={byggdelar} projectInfo={projectInfo} companyInfo={companyInfo} materials={materials} updateByggdelOfferPrice={updateByggdelOfferPrice} />
-          </div>
-        )}
-        {activeTab === 'dokument_ffu' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">description</span>
-              <h2 className="text-2xl font-bold text-on-surface">FFU</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
-        {activeTab === 'dokument_modell' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">architecture</span>
-              <h2 className="text-2xl font-bold text-on-surface">Modell</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
-        {activeTab === 'dokument_kommunikation' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">forum</span>
-              <h2 className="text-2xl font-bold text-on-surface">Kommunikation</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
-        {activeTab === 'arbetare' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">engineering</span>
-              <h2 className="text-2xl font-bold text-on-surface">Arbetare</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
-        {activeTab === 'fastigheter' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">home_work</span>
-              <h2 className="text-2xl font-bold text-on-surface">Fastigheter</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
-        {activeTab === 'receptbibliotek' && <ReceptbibliotekTab companyId={dataSpaceId} />}
-        {activeTab === 'maskiner' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">precision_manufacturing</span>
-              <h2 className="text-2xl font-bold text-on-surface">Maskiner</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
-        {activeTab === 'bilar' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">directions_car</span>
-              <h2 className="text-2xl font-bold text-on-surface">Bilar</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
-        {activeTab === 'ovrigt' && (
-          <div className="p-8 flex items-center justify-center h-full">
-            <div className="text-center">
-              <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">category</span>
-              <h2 className="text-2xl font-bold text-on-surface">Övrigt</h2>
-              <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-            </div>
-          </div>
-        )}
+              showNotification("Version borttagen", "info");
+            });
+          }}
+          addActivityLog={(action, details) => {
+            setProjects(prev => prev.map(p => {
+              if (p.id === activeProjectId) {
+                return {
+                  ...p,
+                  activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action, details }, ...(p.activityLogs || [])]
+                };
+              }
+              return p;
+            }));
+          }}
+          byggdelar={byggdelar}
+          dataSpaceId={dataSpaceId}
+          onProjectCompleted={() => setShowErfarenhetModal(true)}
+          calcResult={calcResult}
+          materials={materials}
+          addMeasurementParts={addMeasurementParts}
+          settings={settings}
+          updateSettings={(key, val) => setSettings({ ...settings, [key]: val })}
+          byggdelTemplates={byggdelTemplates}
+          addTemplate={addTemplate}
+          deleteTemplate={deleteTemplate}
+          addTemplatePart={addTemplatePart}
+          toggleByggdel={toggleByggdel}
+          toggleAllByggdelar={toggleAllByggdelar}
+          reorderByggdelar={reorderByggdelar}
+          removePart={removePart}
+          removeMultipleParts={removeMultipleParts}
+          updateMultipleParts={updateMultipleParts}
+          clonePart={clonePart}
+          togglePartActive={togglePartActive}
+          toggleTypeActive={toggleTypeActive}
+          cloneType={cloneType}
+          openModal={openModal}
+          updateMoment={updateMoment}
+          duplicateMoment={duplicateMoment}
+          updateMaterialPrice={updateMaterialPrice}
+          addMoment={addMoment}
+          removeMoment={removeMoment}
+          updatePartQty={updatePartQty}
+          updatePartAntal={updatePartAntal}
+          customCategories={customCategories}
+          updateMaterial={updateMaterial}
+          updateMultipleMaterials={updateMultipleMaterials}
+          addMaterial={addMaterial}
+          addMaterials={addMaterials}
+          deleteMaterial={deleteMaterial}
+          deleteMultipleMaterials={deleteMultipleMaterials}
+          addCategory={addCategory}
+          renameCategory={renameCategory}
+          removeCategory={removeCategory}
+          showNotification={showNotification}
+          arbetsData={arbetsData}
+          customArbCategories={customArbCategories}
+          updateArbete={updateArbete}
+          updateMultipleArbeten={updateMultipleArbeten}
+          addArbete={addArbete}
+          addArbeten={addArbeten}
+          deleteArbete={deleteArbete}
+          deleteMultipleArbeten={deleteMultipleArbeten}
+          addArbCategory={(cat) => setCustomArbCategories(prev => [...prev.filter(c => c !== cat), cat])}
+          reorderMoment={reorderMoment}
+          updateStartDay={updateStartDay}
+          updatePlanDates={updatePlanDates}
+          updateMomentWorkers={updateMomentWorkers}
+          updateByggdelColor={updateByggdelColor}
+          setSettings={setSettings}
+          updateByggdelOfferPrice={updateByggdelOfferPrice}
+          handleApplyOffert={handleApplyOffert}
+        />
       </main>
           </div>
       </div>
@@ -1707,6 +1665,9 @@ export default function App() {
           </div>
         </div>
       )}
-    </div>
+          </div>
+        </KalkylHistoryProvider>
+      </ProjectDataProvider>
+    </AuthProvider>
   );
 }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export interface BIMSceneConfig {
   backgroundColor?: number | string;
@@ -476,7 +476,7 @@ export class BIMScene {
    * Changes the color scheme of the model
    * @param mode 'default' | 'by-category' | 'by-discipline'
    */
-  public setColorMode(mode: 'default' | 'by-category' | 'by-discipline'): void {
+  public setColorMode(mode: 'default' | 'by-category' | 'by-discipline', elementsData?: any[]): void {
     this.elementsMap.forEach((mesh, id) => {
       if (!(mesh as THREE.Mesh).isMesh) return;
       
@@ -487,8 +487,31 @@ export class BIMScene {
           m.material = origMat;
         }
       } else {
+        // Find corresponding database element for metadata if available
+        let category = m.userData?.category || 'unknown';
+        let discipline = m.userData?.discipline || 'unknown';
+        
+        if (elementsData) {
+           let expressIdStr = id.startsWith('Element_') ? id.replace('Element_', '') : 
+                              id.startsWith('Mesh_') ? id.replace('Mesh_', '') : null;
+           
+           if (expressIdStr) {
+             const dbEl = elementsData.find(e => String(e.properties?.ExpressID) === expressIdStr);
+             if (dbEl) {
+               category = dbEl.category || category;
+               discipline = dbEl.discipline || discipline;
+             }
+           } else {
+             const dbEl = elementsData.find(e => e.id === id);
+             if (dbEl) {
+               category = dbEl.category || category;
+               discipline = dbEl.discipline || discipline;
+             }
+           }
+        }
+
         // Simple distinct color generation based on a string property
-        const prop = mode === 'by-category' ? (m.userData?.category || 'unknown') : (m.userData?.discipline || 'unknown');
+        const prop = mode === 'by-category' ? category : discipline;
         
         let hash = 0;
         for (let i = 0; i < prop.length; i++) {

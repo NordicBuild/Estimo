@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import * as WebIFC from "https://esm.sh/web-ifc@0.0.66";
+import { Document, WebIO } from "https://esm.sh/@gltf-transform/core@3.10.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -210,6 +211,138 @@ serve(async (req) => {
       }
     }
 
+    // --- GEOMETRY EXTRACTION TO GLB ---
+    let geometryUrl: string | null = null;
+    let geometryError: string | null = null;
+    let skipGeometry = false;
+
+    // Check size limit (40MB)
+    const MAX_SIZE = 40 * 1024 * 1024;
+    if (fileUint8Array.length > MAX_SIZE) {
+      console.log(`[BIM] File > 40MB (${fileUint8Array.length} bytes). Skipping geometry extraction.`);
+      skipGeometry = true;
+      geometryError = "File too large (>40MB). Skipped geometry.";
+    }
+
+    if (!skipGeometry && !isTimedOut) {
+      console.log("[BIM] Starting geometry extraction to GLB...");
+      try {
+        const doc = new Document();
+        const buffer = doc.createBuffer();
+        const scene = doc.createScene('Scene');
+        const materials = new Map<string, any>();
+        
+        ifcApi.StreamAllMeshes(model, (mesh: any) => {
+          if (Date.now() - startTime > TIMEOUT_MS) {
+            isTimedOut = true;
+            return;
+          }
+          
+          const expressID = mesh.expressID;
+          const node = doc.createNode(`Element_${expressID}`);
+          scene.addChild(node);
+          
+          const gltfMesh = doc.createMesh(`Mesh_${expressID}`);
+          node.setMesh(gltfMesh);
+          
+          const geometries = mesh.geometries;
+          const size = geometries.size();
+          for (let i = 0; i < size; i++) {
+            const placedGeom = geometries.get(i);
+            const geomID = placedGeom.geometryExpressID;
+            const color = placedGeom.color;
+            const transform = placedGeom.flatTransformation;
+            
+            const colorHash = `${color.x},${color.y},${color.z},${color.w}`;
+            let material = materials.get(colorHash);
+            if (!material) {
+              material = doc.createMaterial(`Mat_${colorHash}`)
+                .setBaseColorFactor([color.x, color.y, color.z, color.w]);
+              if (color.w < 1.0) {
+                material.setAlphaMode('BLEND');
+              }
+              materials.set(colorHash, material);
+            }
+            
+            const geometry = ifcApi.GetGeometry(model, geomID);
+            const vertexData = geometry.GetVertexData();
+            const vertexDataSize = geometry.GetVertexDataSize();
+            const indexData = geometry.GetIndexData();
+            const indexDataSize = geometry.GetIndexDataSize();
+            
+            const vertices = ifcApi.GetVertexArray(vertexData, vertexDataSize);
+            const indices = ifcApi.GetIndexArray(indexData, indexDataSize);
+            
+            const vertexCount = vertices.length / 6;
+            const positions = new Float32Array(vertexCount * 3);
+            
+            for (let v = 0; v < vertexCount; v++) {
+              const x = vertices[v * 6];
+              const y = vertices[v * 6 + 1];
+              const z = vertices[v * 6 + 2];
+              
+              // web-ifc transform is column-major 4x4 matrix
+              const tx = x * transform[0] + y * transform[4] + z * transform[8] + transform[12];
+              const ty = x * transform[1] + y * transform[5] + z * transform[9] + transform[13];
+              const tz = x * transform[2] + y * transform[6] + z * transform[10] + transform[14];
+              
+              positions[v * 3] = tx;
+              positions[v * 3 + 1] = ty;
+              positions[v * 3 + 2] = tz;
+            }
+            
+            const positionAccessor = doc.createAccessor()
+              .setType('VEC3')
+              .setArray(positions)
+              .setBuffer(buffer);
+              
+            const indexAccessor = doc.createAccessor()
+              .setType('SCALAR')
+              .setArray(new Uint32Array(indices))
+              .setBuffer(buffer);
+              
+            const prim = doc.createPrimitive()
+              .setIndices(indexAccessor)
+              .setAttribute('POSITION', positionAccessor)
+              .setMaterial(material);
+              
+            gltfMesh.addPrimitive(prim);
+          }
+        });
+
+        if (!isTimedOut) {
+          console.log("[BIM] Generating GLB binary...");
+          const io = new WebIO();
+          const glbBytes = await io.writeBinary(doc);
+          
+          const glbPath = `projects/${projectId}/bim/${modelId}.glb`;
+          
+          console.log(`[BIM] Uploading GLB to ${glbPath}...`);
+          const { error: uploadError } = await supabaseClient.storage
+            .from('bim-uploads')
+            .upload(glbPath, glbBytes, {
+              upsert: true,
+              contentType: 'model/gltf-binary'
+            });
+            
+          if (uploadError) {
+            console.error("[BIM] GLB upload error:", uploadError);
+            geometryError = uploadError.message;
+          } else {
+            const { data: publicUrlData } = supabaseClient.storage
+              .from('bim-uploads')
+              .getPublicUrl(glbPath);
+            geometryUrl = publicUrlData.publicUrl;
+          }
+        } else {
+          geometryError = "Timeout during geometry extraction.";
+        }
+      } catch (err: any) {
+        console.error("[BIM] Geometry extraction error:", err);
+        geometryError = err.message;
+      }
+    }
+
     // Free WASM memory
     ifcApi.CloseModel(model);
 
@@ -232,17 +365,21 @@ serve(async (req) => {
     }
 
     // 6. Update model status and metadata
-    const finalStatus = isTimedOut ? 'degraded' : 'ready';
+    const finalStatus = (isTimedOut || skipGeometry || !!geometryError) ? 'degraded' : 'ready';
     const timestamp = new Date().toISOString();
     
     await supabaseClient
       .from('bim_models')
       .update({ 
         status: finalStatus,
+        geometry_url: geometryUrl,
+        has_geometry: !!geometryUrl,
         metadata: {
           element_count: elementList.length,
           parsed_at: timestamp,
-          timeout: isTimedOut
+          timeout: isTimedOut,
+          skipGeometry: skipGeometry,
+          geometryError: geometryError
         }
       })
       .eq('id', modelId);
@@ -254,6 +391,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         modelId,
+        geometryUrl,
         elementCount: elementList.length,
         storeys: Array.from(storeysSet),
         disciplines: Array.from(disciplinesSet),

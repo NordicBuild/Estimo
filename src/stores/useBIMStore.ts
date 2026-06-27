@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
+import { supabase } from '../supabase';
 
 export interface BIMElement {
   id: string;
@@ -46,7 +47,7 @@ export interface BIMState {
   error: string | null;
 
   // Actions
-  setActiveModel: (modelId: string | null) => void;
+  setActiveModel: (modelId: string | null) => Promise<void>;
   setElements: (elements: BIMElement[]) => void;
   selectElement: (elementId: string, isMultiSelect?: boolean) => void;
   deselectAll: () => void;
@@ -95,7 +96,40 @@ export const useBIMStore = create<BIMState>()(
         error: null,
 
         // Actions
-        setActiveModel: (modelId) => set({ activeModelId: modelId }),
+        setActiveModel: async (modelId) => {
+          set({ activeModelId: modelId, loading: true, error: null });
+          if (!modelId) {
+            set({ modelUrl: null, elements: [], loading: false });
+            return;
+          }
+          try {
+            // Fetch model details for URL
+            const { data: modelData, error: modelError } = await supabase
+              .from('bim_models')
+              .select('geometry_url, has_geometry')
+              .eq('id', modelId)
+              .single();
+
+            if (modelError) throw modelError;
+
+            // Fetch elements
+            const { data: elements, error: elementsError } = await supabase
+              .from('bim_elements')
+              .select('*')
+              .eq('model_id', modelId);
+
+            if (elementsError) throw elementsError;
+
+            set({
+              modelUrl: modelData.geometry_url || null,
+              elements: (elements as BIMElement[]) || [],
+              loading: false
+            });
+          } catch (err: any) {
+            console.error('[BIMStore] Failed to set active model', err);
+            set({ error: err.message, loading: false });
+          }
+        },
 
         setElements: (elements) => set({ elements }),
 

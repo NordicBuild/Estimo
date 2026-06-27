@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import * as xlsx from 'xlsx';
+// import removed
 import { ResponsiveDialog } from '../../components/Modals/ResponsiveDialog';
 import { DbOffert } from '../api';
 import { ReferensPost } from './NyOffertModal';
@@ -26,10 +26,11 @@ export function ImportOffertModal({ isOpen, onClose, onSave, referensLista }: Pr
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const xlsx = await import('xlsx');
     const reader = new FileReader();
     reader.onload = (evt) => {
       const bstr = evt.target?.result;

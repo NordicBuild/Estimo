@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { Material, ArbetsMoment, Byggdel, INITIAL_TIDSFAKTORER, TYPE_UNIT } from "../data";
 import { calculateBaseMoments, calculateDefaultMoments } from "../calculationHelpers";
-import { ByggdelSketch } from "./ByggdelSketch";
+
+const ByggdelSketch = lazy(() => import('./ByggdelSketch').then(m => ({ default: m.ByggdelSketch })));
 
 interface Props {
   isOpen: boolean;
@@ -285,22 +286,24 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
             </div>
             <div className="flex flex-col md:flex-row gap-4">
               <div className="w-full md:w-1/3">
-                <ByggdelSketch mType={mType} dimensions={{ 
-  length: Number(String(mLength).replace(',', '.')) || 0, 
-  width: Number(String(mWidth).replace(',', '.')) || 0, 
-  height: Number(String(mHeight).replace(',', '.')) || 0, 
-  shaftWidth: Number(String(mShaftWidth).replace(',', '.')) || 0, 
-  shaftHeight: Number(String(mShaftHeight).replace(',', '.')) || 0, 
-  wallThickness: Number(String(mWallThickness).replace(',', '.')) || 0, 
-  slabThickness: Number(String(mSlabThickness).replace(',', '.')) || 0,
-  perimeter: Number(String(mPerimeter).replace(',', '.')) || 0, 
-  area: Number(String(mArea).replace(',', '.')) || 0,
-  stepCount: Number(String(mStepCount).replace(',', '.')) || 0, 
-  stepWidth: Number(String(mStepWidth).replace(',', '.')) || 0, 
-  stepHeight: Number(String(mStepHeight).replace(',', '.')) || 0, 
-  stepDepth: Number(String(mStepDepth).replace(',', '.')) || 0, 
-  rampThickness: Number(String(mRampThickness).replace(',', '.')) || 0 
-}} />
+                <Suspense fallback={<div className="h-48 bg-gray-100 flex items-center justify-center rounded border text-sm text-gray-500">Laddar 3D-skiss...</div>}>
+                  <ByggdelSketch mType={mType} dimensions={{ 
+    length: Number(String(mLength).replace(',', '.')) || 0, 
+    width: Number(String(mWidth).replace(',', '.')) || 0, 
+    height: Number(String(mHeight).replace(',', '.')) || 0, 
+    shaftWidth: Number(String(mShaftWidth).replace(',', '.')) || 0, 
+    shaftHeight: Number(String(mShaftHeight).replace(',', '.')) || 0, 
+    wallThickness: Number(String(mWallThickness).replace(',', '.')) || 0, 
+    slabThickness: Number(String(mSlabThickness).replace(',', '.')) || 0,
+    perimeter: Number(String(mPerimeter).replace(',', '.')) || 0, 
+    area: Number(String(mArea).replace(',', '.')) || 0,
+    stepCount: Number(String(mStepCount).replace(',', '.')) || 0, 
+    stepWidth: Number(String(mStepWidth).replace(',', '.')) || 0, 
+    stepHeight: Number(String(mStepHeight).replace(',', '.')) || 0, 
+    stepDepth: Number(String(mStepDepth).replace(',', '.')) || 0, 
+    rampThickness: Number(String(mRampThickness).replace(',', '.')) || 0 
+                  }} />
+                </Suspense>
               </div>
               <div className="w-full md:w-2/3 flex flex-col justify-center">
             {['27.1_PlattaMark', '34.1_Bjalklag', '36.1_Balkong', '43.1_Brofarbana', '48.1_Paldack'].includes(mType) ? (

@@ -3,7 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { Byggdel, INITIAL_TIDSFAKTORER } from "../data";
 import { calculateDefaultMoments } from "../calculationHelpers";
 import { PageScales, scaleForPage, setPageScale, serializePageScales, deserializePageScales, emptyPageScales } from "../pdf/pageScales";
-import { Scale, deriveScale, toRealDistance, toRealArea, presetScale, ratioFromScale } from "../pdf/scaleHelpers";
+import { Scale, deriveScale, toRealDistance, toRealArea, presetScale, ratioFromScale, toMeters } from "../pdf/scaleHelpers";
 
 // Use CDN for worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -2277,7 +2277,6 @@ export function PdfMeasurementTab({
                 onClick={async () => {
                   if (calibrateDialog.length) {
                     const val = Number(calibrateDialog.length.replace(",", "."));
-                    const { toMeters } = await import("../pdf/scaleHelpers");
                     const meters = toMeters(val, calibrateDialog.unit);
                     const newScaleObj = deriveScale(calibrateDialog.pxDistance, meters);
                     handleSetScale(newScaleObj);

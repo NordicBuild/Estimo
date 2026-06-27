@@ -128,26 +128,10 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
          throw new Error(`BIM Process Error: ${funcData.error}`);
       }
 
-      console.log(`[BIM] Fetching parsed elements...`);
+      console.log(`[BIM] Successfully parsed IFC. Loading into viewer...`);
 
-      // 4. Fetch elements
-      const { data: parsedElements, error: fetchError } = await supabase
-        .from('bim_elements')
-        .select('*')
-        .eq('model_id', modelId);
-
-      if (fetchError) throw fetchError;
-
-      if (parsedElements && parsedElements.length > 0) {
-        setElements(parsedElements as any[]);
-        setModelName(file.name);
-        setActiveModel(modelId);
-        setModelUrl(null); // Clear local url as we now use id
-      } else {
-        throw new Error("No elements could be extracted from this model.");
-      }
-      
-      console.log(`[BIM] Successfully loaded ${parsedElements.length} elements.`);
+      setModelName(file.name);
+      await setActiveModel(modelId);
 
     } catch (err: any) {
       console.error("[BIM] Error uploading/parsing IFC:", err);

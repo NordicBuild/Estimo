@@ -56,11 +56,29 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
           performance: 'high',
         });
         
-        scene.onPick((elementId) => {
-          if (elementId) {
+        scene.onPick((sceneElementId) => {
+          if (sceneElementId) {
             // Check if multi-select modifier is held (could extend with event parameter)
             // For now, toggle the specific element
-            selectElement(elementId, true);
+            
+            // Map sceneElementId (e.g. "Element_123" or mesh UUID) back to database element ID
+            let dbElementId = sceneElementId;
+            if (sceneElementId.startsWith('Element_')) {
+              const expressIdStr = sceneElementId.replace('Element_', '');
+              const dbEl = useBIMStore.getState().elements.find(e => 
+                String(e.properties?.ExpressID) === expressIdStr
+              );
+              if (dbEl) dbElementId = dbEl.id;
+            } else if (sceneElementId.startsWith('Mesh_')) {
+              // fallback if it matched mesh
+              const expressIdStr = sceneElementId.replace('Mesh_', '');
+              const dbEl = useBIMStore.getState().elements.find(e => 
+                String(e.properties?.ExpressID) === expressIdStr
+              );
+              if (dbEl) dbElementId = dbEl.id;
+            }
+
+            selectElement(dbElementId, true);
           } else {
             deselectAll();
           }
@@ -82,7 +100,13 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
     // Load Model
     useEffect(() => {
       if (!sceneRef.current) return;
-      if (!modelId && !modelUrl) return;
+      if (!modelId && !modelUrl) {
+        // If we have elements but no URL, it means geometry extraction failed or was skipped
+        if (elements.length > 0) {
+          setError("Geometri saknas/degraderad – properties tillgängliga i sidopanelen.");
+        }
+        return;
+      }
 
       let isCancelled = false;
       const loadModel = async () => {
@@ -90,11 +114,19 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
         setError(null);
         try {
           const url = modelUrl || (modelId ? `/models/${modelId}.glb` : undefined);
-          if (!url) return;
-          const loadedElements = await sceneRef.current?.loadGLB(url);
+          if (!url) {
+            setLoading(false);
+            if (elements.length > 0) {
+              setError("Geometri saknas/degraderad – properties tillgängliga i sidopanelen.");
+            }
+            return;
+          }
+          
+          await sceneRef.current?.loadGLB(url);
           if (!isCancelled) {
             setLoading(false);
-            if (loadedElements) setElements(loadedElements);
+            // We intentionally do NOT call setElements(loadedElements) here 
+            // because our store already has the rich data from Postgres.
             sceneRef.current?.frameAll();
           }
         } catch (err: any) {
@@ -111,7 +143,7 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
       return () => {
         isCancelled = true;
       };
-    }, [modelId, modelUrl, setElements]);
+    }, [modelId, modelUrl, elements.length]);
 
     // Sync Selection
     useEffect(() => {
@@ -119,20 +151,31 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
       
       sceneRef.current.deselectAll();
       selectedElementIds.forEach(id => {
-        sceneRef.current?.selectElement(id);
+        // Find the database element to get its ExpressID
+        const dbEl = elements.find(e => e.id === id);
+        if (dbEl && dbEl.properties?.ExpressID) {
+           sceneRef.current?.selectElement(`Element_${dbEl.properties.ExpressID}`);
+        } else {
+           sceneRef.current?.selectElement(id);
+        }
       });
-    }, [selectedElementIds]);
+    }, [selectedElementIds, elements]);
 
     // Sync Visibility
     useEffect(() => {
       if (!sceneRef.current || elements.length === 0) return;
 
-      const visibleIds = new Set(visibleElements.map(e => e.id || e.guid));
+      const visibleIds = new Set(visibleElements.map(e => e.id));
       
       elements.forEach(el => {
-        const elementId = el.id || el.guid;
-        const isVisible = visibleIds.has(elementId);
-        sceneRef.current?.setElementVisibility(elementId, isVisible);
+        const isVisible = visibleIds.has(el.id);
+        if (el.properties?.ExpressID) {
+          sceneRef.current?.setElementVisibility(`Element_${el.properties.ExpressID}`, isVisible);
+          // also try node format if mesh was selected
+          sceneRef.current?.setElementVisibility(`Mesh_${el.properties.ExpressID}`, isVisible);
+        } else {
+          sceneRef.current?.setElementVisibility(el.id, isVisible);
+        }
       });
     }, [elements, visibleElements]);
 
@@ -151,8 +194,8 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
     // Sync Color Mode
     useEffect(() => {
       if (!sceneRef.current) return;
-      sceneRef.current.setColorMode(colorMode);
-    }, [colorMode]);
+      sceneRef.current.setColorMode(colorMode, elements);
+    }, [colorMode, elements]);
 
     return (
       <div className="relative w-full h-full bg-gray-50 overflow-hidden">

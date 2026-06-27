@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     company_id UUID REFERENCES companies(id),
-    role TEXT CHECK (role IN ('admin', 'user', 'viewer')),
+    email TEXT,
+    name TEXT,
+    role TEXT CHECK (role IN ('admin', 'manager', 'user', 'viewer')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -151,9 +153,30 @@ CREATE TABLE IF NOT EXISTS projekt_utfall (
 -- 11. App State (Key-Value Store)
 CREATE TABLE IF NOT EXISTS public.app_state (
     id TEXT PRIMARY KEY,
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     data JSONB NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_app_state_company ON public.app_state(company_id);
+
+CREATE OR REPLACE FUNCTION public.set_app_state_company_id()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.company_id IS NULL THEN
+    NEW.company_id := (SELECT company_id FROM profiles WHERE id = auth.uid());
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_app_state_company_id_trigger ON public.app_state;
+CREATE TRIGGER set_app_state_company_id_trigger
+BEFORE INSERT OR UPDATE ON public.app_state
+FOR EACH ROW
+EXECUTE FUNCTION public.set_app_state_company_id();
+
+DELETE FROM public.app_state WHERE id = 'global_users';
 
 -- 9. Row Level Security (RLS) policies
 -- Slå på RLS för varje tabell
@@ -185,9 +208,55 @@ CREATE POLICY "Se recept baserat på company" ON byggdel_recept
 CREATE POLICY "Se utfall baserat på company" ON projekt_utfall
     FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
 
--- App State policy (Full tillgång för alla inloggade just nu, då ids i koden använder dataSpaceId)
-DROP POLICY IF EXISTS "Enable all for all users" ON public.app_state;
-CREATE POLICY "Enable all for all users" ON public.app_state FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "materials per company" ON materials
+  FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()))
+  WITH CHECK (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
 
+CREATE POLICY "arbetsmoments per company" ON arbetsmoments
+  FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()))
+  WITH CHECK (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+CREATE POLICY "folders per company" ON folders
+  FOR ALL USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()))
+  WITH CHECK (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+CREATE POLICY "project_byggdelar per company" ON project_byggdelar
+  FOR ALL USING (project_id IN (
+    SELECT id FROM projects WHERE company_id IN
+      (SELECT company_id FROM profiles WHERE id = auth.uid())))
+  WITH CHECK (project_id IN (
+    SELECT id FROM projects WHERE company_id IN
+      (SELECT company_id FROM profiles WHERE id = auth.uid())));
+
+CREATE POLICY "profiles egen rad" ON profiles
+  FOR SELECT USING (id = auth.uid()
+    OR company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+-- App State policy (Enbart för det egna företaget)
+DROP POLICY IF EXISTS "Enable all for all users" ON public.app_state;
+DROP POLICY IF EXISTS "app_state egna företaget" ON public.app_state;
+
+CREATE POLICY "app_state egna företaget"
+  ON public.app_state
+  FOR ALL
+  USING (
+    company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
+  )
+  WITH CHECK (
+    company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
+  );
+
+
+-- 12. Admin Invoices
+CREATE TABLE IF NOT EXISTS public.admin_invoices (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.admin_invoices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "admin_invoices endast admin"
+  ON public.admin_invoices FOR ALL
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
+  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 -- Osv. Beroende på exakt hur strikt vi vill ha det.

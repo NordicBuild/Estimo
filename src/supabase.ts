@@ -7,7 +7,6 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'fake-anon-key
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export const logout = async () => {
-  localStorage.removeItem('betong_mock_user');
   try {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
