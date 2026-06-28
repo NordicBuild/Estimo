@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { supabase } from '../supabase';
 import { Material, ArbetsMoment, INITIAL_MATERIALS, INITIAL_ARBETS_DATA } from '../data';
-import { MaterialTab } from './MaterialTab';
-import { ArbetsmomentTab } from './ArbetsmomentTab';
+
+const MaterialTab = lazy(() => import('./MaterialTab').then(m => ({ default: m.MaterialTab })));
+const ArbetsmomentTab = lazy(() => import('./ArbetsmomentTab').then(m => ({ default: m.ArbetsmomentTab })));
 
 interface AdminRegisterTabProps {
   materials?: Material[];
@@ -72,36 +73,40 @@ export function AdminRegisterTab({
       </div>
       <div className="flex-1 overflow-auto bg-white p-4 pb-20">
         {activeTab === 'material' && (
-          <MaterialTab 
-            materials={materials} 
-            customCategories={customCategories}
-            updateMaterial={updateMaterial}
-            updateMultipleMaterials={updateMultipleMaterials}
-            addMaterial={addMaterial}
-            addMaterials={addMaterials}
-            deleteMaterial={deleteMaterial}
-            deleteMultipleMaterials={deleteMultipleMaterials}
-            addCategory={addCategory}
-            renameCategory={renameCategory}
-            removeCategory={removeCategory}
-            showNotification={showNotification}
-          />
+          <Suspense fallback={<div className="p-8 text-center text-gray-500">Laddar Materialregister...</div>}>
+            <MaterialTab 
+              materials={materials} 
+              customCategories={customCategories}
+              updateMaterial={updateMaterial}
+              updateMultipleMaterials={updateMultipleMaterials}
+              addMaterial={addMaterial}
+              addMaterials={addMaterials}
+              deleteMaterial={deleteMaterial}
+              deleteMultipleMaterials={deleteMultipleMaterials}
+              addCategory={addCategory}
+              renameCategory={renameCategory}
+              removeCategory={removeCategory}
+              showNotification={showNotification}
+            />
+          </Suspense>
         )}
         {activeTab === 'arbete' && (
-          <ArbetsmomentTab 
-            arbetsData={arbetsData}
-            customCategories={customCategories}
-            updateArbete={updateArbete}
-            updateMultipleArbeten={updateMultipleArbeten}
-            addArbete={addArbete}
-            addArbeten={addArbeten}
-            deleteArbete={deleteArbete}
-            deleteMultipleArbeten={deleteMultipleArbeten}
-            addCategory={addCategory}
-            renameCategory={renameCategory}
-            removeCategory={removeCategory}
-            showNotification={showNotification}
-          />
+          <Suspense fallback={<div className="p-8 text-center text-gray-500">Laddar Arbetsmomentregister...</div>}>
+            <ArbetsmomentTab 
+              arbetsData={arbetsData}
+              customCategories={customCategories}
+              updateArbete={updateArbete}
+              updateMultipleArbeten={updateMultipleArbeten}
+              addArbete={addArbete}
+              addArbeten={addArbeten}
+              deleteArbete={deleteArbete}
+              deleteMultipleArbeten={deleteMultipleArbeten}
+              addCategory={addCategory}
+              renameCategory={renameCategory}
+              removeCategory={removeCategory}
+              showNotification={showNotification}
+            />
+          </Suspense>
         )}
       </div>
     </div>

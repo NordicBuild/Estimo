@@ -1,20 +1,21 @@
 import React, { Suspense, lazy } from 'react';
-import { HemsidaTab } from '../HemsidaTab';
-import { ProjektInfoTab } from '../ProjektInfoTab';
 import { KalkylTab } from '../KalkylTab';
-import { MaterialTab } from '../MaterialTab';
 import { ArbetsmomentTab } from '../ArbetsmomentTab';
-import { AnalysTab } from '../AnalysTab';
-import { SammanstallnTab } from '../SammanstallnTab';
-import { PlaneringTab } from '../PlaneringTab';
-import { SlutsidaTab } from '../SlutsidaTab';
 import { AnbudTab } from '../AnbudTab';
-import { InkopTab } from '../InkopTab';
-import { PrognosTab } from '../PrognosTab';
-import { ReceptbibliotekTab } from '../ReceptbibliotekTab';
+
+const HemsidaTab = lazy(() => import('../HemsidaTab').then(m => ({ default: m.HemsidaTab })));
+const ProjektInfoTab = lazy(() => import('../ProjektInfoTab').then(m => ({ default: m.ProjektInfoTab })));
+const SammanstallnTab = lazy(() => import('../SammanstallnTab').then(m => ({ default: m.SammanstallnTab })));
+const PlaneringTab = lazy(() => import('../PlaneringTab').then(m => ({ default: m.PlaneringTab })));
+const SlutsidaTab = lazy(() => import('../SlutsidaTab').then(m => ({ default: m.SlutsidaTab })));
+const InkopTab = lazy(() => import('../InkopTab').then(m => ({ default: m.InkopTab })));
+const PrognosTab = lazy(() => import('../PrognosTab').then(m => ({ default: m.PrognosTab })));
+const ReceptbibliotekTab = lazy(() => import('../ReceptbibliotekTab').then(m => ({ default: m.ReceptbibliotekTab })));
 
 const PdfMeasurementTab = lazy(() => import('../PdfMeasurementTab').then(m => ({ default: m.PdfMeasurementTab })));
 const BIMMeasurementTab = lazy(() => import('../BIMMeasurementTab').then(m => ({ default: m.BIMMeasurementTab })));
+const AnalysTab = lazy(() => import('../AnalysTab').then(m => ({ default: m.AnalysTab })));
+const MaterialTab = lazy(() => import('../MaterialTab').then(m => ({ default: m.MaterialTab })));
 
 const FallbackSpinner = () => (
   <div className="flex-1 flex items-center justify-center p-8">
@@ -28,40 +29,44 @@ export function TabRouter(props: any) {
   return (
     <>
       {activeTab === 'hemsida' && (
-        <HemsidaTab 
-          user={rest.user}
-          projects={rest.projects}
-          folders={rest.folders}
-          activeProjectId={rest.activeProjectId}
-          companyName={rest.companyInfo.name}
-          createFolder={rest.createFolder}
-          createProject={rest.createProject}
-          renameFolder={rest.renameFolder}
-          deleteFolder={rest.deleteFolder}
-          renameProject={rest.renameProject}
-          duplicateProject={rest.duplicateProject}
-          deleteProject={rest.deleteProject}
-          switchProject={rest.switchProject}
-          reorderProjects={rest.reorderProjects}
-          reorderFolders={rest.reorderFolders}
-        />
+        <Suspense fallback={<FallbackSpinner />}>
+          <HemsidaTab 
+            user={rest.user}
+            projects={rest.projects}
+            folders={rest.folders}
+            activeProjectId={rest.activeProjectId}
+            companyName={rest.companyInfo.name}
+            createFolder={rest.createFolder}
+            createProject={rest.createProject}
+            renameFolder={rest.renameFolder}
+            deleteFolder={rest.deleteFolder}
+            renameProject={rest.renameProject}
+            duplicateProject={rest.duplicateProject}
+            deleteProject={rest.deleteProject}
+            switchProject={rest.switchProject}
+            reorderProjects={rest.reorderProjects}
+            reorderFolders={rest.reorderFolders}
+          />
+        </Suspense>
       )}
       {activeTab === 'projekt' && (
-        <ProjektInfoTab 
-          projectInfo={rest.projectInfo} 
-          setProjectInfo={rest.setProjectInfo}
-          companyInfo={rest.companyInfo}
-          setCompanyInfo={rest.setCompanyInfo}
-          currentProject={rest.currentProject}
-          saveVersion={rest.saveVersion}
-          loadVersion={rest.loadVersion}
-          deleteVersion={rest.deleteVersion}
-          addActivityLog={rest.addActivityLog}
-          byggdelar={rest.byggdelar}
-          projectId={rest.activeProjectId}
-          companyId={rest.dataSpaceId}
-          onProjectCompleted={rest.onProjectCompleted}
-        />
+        <Suspense fallback={<FallbackSpinner />}>
+          <ProjektInfoTab 
+            projectInfo={rest.projectInfo} 
+            setProjectInfo={rest.setProjectInfo}
+            companyInfo={rest.companyInfo}
+            setCompanyInfo={rest.setCompanyInfo}
+            currentProject={rest.currentProject}
+            saveVersion={rest.saveVersion}
+            loadVersion={rest.loadVersion}
+            deleteVersion={rest.deleteVersion}
+            addActivityLog={rest.addActivityLog}
+            byggdelar={rest.byggdelar}
+            projectId={rest.activeProjectId}
+            companyId={rest.dataSpaceId}
+            onProjectCompleted={rest.onProjectCompleted}
+          />
+        </Suspense>
       )}
       {activeTab === 'kalkyl' && (
         <KalkylTab 
@@ -109,20 +114,22 @@ export function TabRouter(props: any) {
         </Suspense>
       )}
       {activeTab === 'material' && (
-        <MaterialTab 
-          materials={rest.materials} 
-          customCategories={rest.customCategories}
-          updateMaterial={rest.updateMaterial} 
-          updateMultipleMaterials={rest.updateMultipleMaterials}
-          addMaterial={rest.addMaterial} 
-          addMaterials={rest.addMaterials}
-          deleteMaterial={rest.deleteMaterial} 
-          deleteMultipleMaterials={rest.deleteMultipleMaterials}
-          addCategory={rest.addCategory}
-          renameCategory={rest.renameCategory}
-          removeCategory={rest.removeCategory}
-          showNotification={rest.showNotification}
-        />
+        <Suspense fallback={<FallbackSpinner />}>
+          <MaterialTab 
+            materials={rest.materials} 
+            customCategories={rest.customCategories}
+            updateMaterial={rest.updateMaterial} 
+            updateMultipleMaterials={rest.updateMultipleMaterials}
+            addMaterial={rest.addMaterial} 
+            addMaterials={rest.addMaterials}
+            deleteMaterial={rest.deleteMaterial} 
+            deleteMultipleMaterials={rest.deleteMultipleMaterials}
+            addCategory={rest.addCategory}
+            renameCategory={rest.renameCategory}
+            removeCategory={rest.removeCategory}
+            showNotification={rest.showNotification}
+          />
+        </Suspense>
       )}
       {activeTab === 'arbete' && (
         <div className="p-8">
@@ -140,13 +147,37 @@ export function TabRouter(props: any) {
           />
         </div>
       )}
-      {activeTab === 'analys' && <AnalysTab calcResult={rest.calcResult} />}
-      {activeTab === 'sammanstalln' && <SammanstallnTab calcResult={rest.calcResult} materials={rest.materials} updateMaterial={rest.updateMaterial} projectInfo={rest.projectInfo} setProjectInfo={rest.setProjectInfo} companyInfo={rest.companyInfo} />}
-      {activeTab === 'planering' && <PlaneringTab calcResult={rest.calcResult} byggdelar={rest.byggdelar} reorderByggdelar={rest.reorderByggdelar} reorderMoment={rest.reorderMoment} updateStartDay={rest.updateStartDay} updatePlanDates={rest.updatePlanDates} updateMomentWorkers={rest.updateMomentWorkers} updateByggdelColor={rest.updateByggdelColor} />}
-      {activeTab === 'slutsida' && <SlutsidaTab settings={rest.settings} setSettings={rest.setSettings} calcResult={rest.calcResult} />}
+      {activeTab === 'analys' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <AnalysTab calcResult={rest.calcResult} />
+        </Suspense>
+      )}
+      {activeTab === 'sammanstalln' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <SammanstallnTab calcResult={rest.calcResult} materials={rest.materials} updateMaterial={rest.updateMaterial} projectInfo={rest.projectInfo} setProjectInfo={rest.setProjectInfo} companyInfo={rest.companyInfo} />
+        </Suspense>
+      )}
+      {activeTab === 'planering' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <PlaneringTab calcResult={rest.calcResult} byggdelar={rest.byggdelar} reorderByggdelar={rest.reorderByggdelar} reorderMoment={rest.reorderMoment} updateStartDay={rest.updateStartDay} updatePlanDates={rest.updatePlanDates} updateMomentWorkers={rest.updateMomentWorkers} updateByggdelColor={rest.updateByggdelColor} />
+        </Suspense>
+      )}
+      {activeTab === 'slutsida' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <SlutsidaTab settings={rest.settings} setSettings={rest.setSettings} calcResult={rest.calcResult} />
+        </Suspense>
+      )}
       {activeTab === 'anbud' && <AnbudTab calcResult={rest.calcResult} byggdelar={rest.byggdelar} projectInfo={rest.projectInfo} companyInfo={rest.companyInfo} materials={rest.materials} updateByggdelOfferPrice={rest.updateByggdelOfferPrice} />}
-      {activeTab === 'inkop' && <InkopTab projectId={rest.activeProjectId} byggdelar={rest.byggdelar} calcResult={rest.calcResult} companyId={rest.dataSpaceId} onApplyOffert={rest.handleApplyOffert} />}
-      {activeTab === 'prognos' && <PrognosTab projectId={rest.activeProjectId} byggdelar={rest.byggdelar} calcResult={rest.calcResult} companyId={rest.dataSpaceId} />}
+      {activeTab === 'inkop' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <InkopTab projectId={rest.activeProjectId} byggdelar={rest.byggdelar} calcResult={rest.calcResult} companyId={rest.dataSpaceId} onApplyOffert={rest.handleApplyOffert} />
+        </Suspense>
+      )}
+      {activeTab === 'prognos' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <PrognosTab projectId={rest.activeProjectId} byggdelar={rest.byggdelar} calcResult={rest.calcResult} companyId={rest.dataSpaceId} />
+        </Suspense>
+      )}
       {activeTab !== 'anbud' && (
         <div style={{ position: 'absolute', top: '-10000px', left: 0, width: '1000px', zIndex: -1000, pointerEvents: 'none' }}>
           <AnbudTab calcResult={rest.calcResult} byggdelar={rest.byggdelar} projectInfo={rest.projectInfo} companyInfo={rest.companyInfo} materials={rest.materials} updateByggdelOfferPrice={rest.updateByggdelOfferPrice} />
@@ -197,7 +228,11 @@ export function TabRouter(props: any) {
           </div>
         </div>
       )}
-      {activeTab === 'receptbibliotek' && <ReceptbibliotekTab companyId={rest.dataSpaceId} />}
+      {activeTab === 'receptbibliotek' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <ReceptbibliotekTab companyId={rest.dataSpaceId} />
+        </Suspense>
+      )}
       {activeTab === 'maskiner' && (
         <div className="p-8 flex items-center justify-center h-full">
           <div className="text-center">

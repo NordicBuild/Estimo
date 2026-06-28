@@ -1,10 +1,11 @@
-import React, { useState, Fragment, useRef, useEffect } from 'react';
+import React, { useState, Fragment, useRef, useEffect, lazy, Suspense } from 'react';
 // import removed
 import { Material, DEFAULT_MATERIAL } from '../data';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { EXAMPLE_CO2_FACTORS } from '../climate/co2';
 import { OpenLcaClient, Ref, CalcSetup } from '../climate/openLcaClient';
 import { Button, IconButton, Input, Select, Modal, Badge, Toolbar, Table, Thead, Tbody, Tr, Th, Td } from '../ui';
+
+const MaterialPriceChart = lazy(() => import('./MaterialPriceChart'));
 
 interface Props {
   materials: Material[];
@@ -1014,25 +1015,9 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
                               />
                             </div>
                             <div className="h-48 w-full bg-white border border-[var(--border)] rounded-lg p-2">
-                              {m.priceHistory && m.priceHistory.length > 0 ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <LineChart data={m.priceHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                                    <XAxis dataKey="date" tick={{fontSize: 10}} stroke="#9ca3af" tickMargin={8} minTickGap={15} />
-                                    <YAxis tick={{fontSize: 10}} stroke="#9ca3af" width={40} tickFormatter={(v) => `${v}`} />
-                                    <Tooltip 
-                                      contentStyle={{fontSize: '12px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)'}}
-                                      formatter={(value: number) => [`${value} kr`, 'Pris']}
-                                      labelStyle={{color: 'var(--text2)', marginBottom: '4px', borderBottom: '1px solid var(--border)', paddingBottom: '4px'}}
-                                    />
-                                    <Line type="monotone" dataKey="price" stroke="var(--blue)" strokeWidth={2} dot={{r: 4, fill: 'var(--blue)'}} activeDot={{r: 6}} />
-                                  </LineChart>
-                                </ResponsiveContainer>
-                              ) : (
-                                <div className="flex items-center justify-center h-full text-sm text-[var(--text3)]">
-                                  Ingen prishistorik tillgänglig. Ändra priset ovan för att börja spara historik.
-                                </div>
-                              )}
+                              <Suspense fallback={<div className="h-64" />}>
+                                <MaterialPriceChart data={m.priceHistory || []} />
+                              </Suspense>
                             </div>
                           </td>
                         </tr>
