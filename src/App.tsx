@@ -1250,7 +1250,7 @@ export default function App() {
                       company_id: company.id, 
                       role: 'admin',
                       email: user.email,
-                      name: user.email?.split('@')[0] || 'Användare'
+                      full_name: user.email?.split('@')[0] || 'Användare'
                     }]);
                     
                   if (profErr) throw profErr;

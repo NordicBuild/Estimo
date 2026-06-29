@@ -5,7 +5,7 @@ import { supabase, loginWithGoogle, logout } from '../supabase';
 export interface AppProfile {
   id: string;
   full_name: string | null;
-  role: 'user' | 'admin' | null;
+  role: 'admin' | 'manager' | 'user' | 'viewer' | null;
   company_id: string | null;
 }
 
@@ -28,11 +28,15 @@ export function useAppAuth(
       return;
     }
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, role, company_id')
         .eq('id', sessionUser.id)
         .single();
+      
+      if (error) {
+        console.error('profiles fetch', error);
+      }
       
       if (data) {
         setProfile(data as AppProfile);
@@ -46,6 +50,7 @@ export function useAppAuth(
         setAppMode('kalkyl');
       }
     } catch (e) {
+      console.error('profiles fetch', e);
       setProfile(null);
       setAppMode('kalkyl');
     }
