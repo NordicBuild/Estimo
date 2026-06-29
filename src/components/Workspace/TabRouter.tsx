@@ -11,6 +11,7 @@ const SlutsidaTab = lazy(() => import('../SlutsidaTab').then(m => ({ default: m.
 const InkopTab = lazy(() => import('../InkopTab').then(m => ({ default: m.InkopTab })));
 const PrognosTab = lazy(() => import('../PrognosTab').then(m => ({ default: m.PrognosTab })));
 const ReceptbibliotekTab = lazy(() => import('../ReceptbibliotekTab').then(m => ({ default: m.ReceptbibliotekTab })));
+const MinaUppgifterTab = lazy(() => import('../MinaUppgifterTab').then(m => ({ default: m.MinaUppgifterTab })));
 
 const PdfMeasurementTab = lazy(() => import('../PdfMeasurementTab').then(m => ({ default: m.PdfMeasurementTab })));
 const BIMMeasurementTab = lazy(() => import('../BIMMeasurementTab').then(m => ({ default: m.BIMMeasurementTab })));
@@ -259,6 +260,11 @@ export function TabRouter(props: any) {
             <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
           </div>
         </div>
+      )}
+      {activeTab === 'mina_uppgifter' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <MinaUppgifterTab user={rest.user} profile={rest.profile} refreshProfile={rest.refreshProfile} />
+        </Suspense>
       )}
     </>
   );

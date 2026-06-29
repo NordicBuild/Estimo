@@ -24,7 +24,7 @@ import { KalkylHistoryProvider } from './state/KalkylHistoryContext';
 
 export default function App() {
   const [appMode, setAppMode] = useState<'kalkyl' | 'admin'>(() => (localStorage.getItem('betong_app_mode') as any) || 'kalkyl');
-  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek'>(() => {
+  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek' | 'mina_uppgifter'>(() => {
     return (localStorage.getItem('betong_active_tab') as any) || 'projekt';
   });
   const [adminSubTab, setAdminSubTab] = useState<'oversikt' | 'kunder' | 'fakturor' | 'register' | 'installningar'>(() => {
@@ -33,6 +33,9 @@ export default function App() {
   
   const {
     user,
+    profile,
+    refreshProfile,
+    isAdmin,
     authInitialized,
     manualEmail,
     setManualEmail,
@@ -1273,6 +1276,29 @@ export default function App() {
   }
 
   if (appMode === 'admin') {
+    if (!isAdmin) {
+      return (
+        <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-4">
+          <div className="bg-surface-container-lowest p-8 rounded-2xl border border-outline-variant max-w-md w-full text-center shadow-lg">
+            <span className="material-symbols-outlined text-[48px] text-status-error mb-4">gpp_bad</span>
+            <h1 className="text-2xl font-bold text-on-surface mb-2">Behörighet saknas</h1>
+            <p className="text-on-surface-variant mb-6">
+              Du saknar administratörsrättigheter för att visa den här sidan.
+            </p>
+            <button 
+              className="bg-primary text-on-primary font-semibold py-2 px-6 rounded-lg hover:bg-primary/90 transition-colors"
+              onClick={() => {
+                localStorage.setItem('betong_app_mode', 'kalkyl');
+                setAppMode('kalkyl');
+              }}
+            >
+              Tillbaka till Kalkylportal
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-background text-on-background font-sans flex flex-col h-screen overflow-hidden">
         <header className="bg-surface border-b border-outline-variant h-16 px-4 md:px-8 flex items-center justify-between sticky top-0 z-50 text-on-surface">
@@ -1401,7 +1427,7 @@ export default function App() {
           <div className="fixed inset-0 bg-black/50 z-40 lg:hidden print:hidden" onClick={() => setSidebarOpen(false)}></div>
         )}
 
-        <WorkspaceNav activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+        <WorkspaceNav activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} isAdmin={isAdmin} />
 
         <div className="flex-1 flex flex-col min-w-0">
           <WorkspaceActions
@@ -1417,6 +1443,8 @@ export default function App() {
         <TabRouter 
           activeTab={activeTab}
           user={user}
+          profile={profile}
+          refreshProfile={refreshProfile}
           projects={projects}
           folders={folders}
           activeProjectId={activeProjectId}

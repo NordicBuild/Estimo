@@ -61,9 +61,10 @@ interface WorkspaceNavProps {
   setActiveTab: (val: any) => void;
   sidebarOpen?: boolean;
   setSidebarOpen?: (val: boolean) => void;
+  isAdmin?: boolean;
 }
 
-export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: WorkspaceNavProps) {
+export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen, isAdmin }: WorkspaceNavProps) {
   const kalkylTabs = ['kalkyl', 'material', 'arbete', 'analys', 'sammanstalln', 'slutsida', 'planering', 'anbud', 'inkop', 'prognos'];
   const isKalkylActive = kalkylTabs.includes(activeTab);
   
@@ -79,6 +80,7 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
     { id: 'dokument_ffu', label: 'Projektunderlag', icon: 'topic' },
     { id: 'kalkyl', label: 'Anbud', icon: 'calculate' },
     { id: 'arbetare', label: 'Resurser', icon: 'inventory_2' },
+    { id: 'mina_uppgifter', label: 'Mina uppgifter', icon: 'person' },
   ] as const;
 
   return (
@@ -170,6 +172,21 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
           );
         })}
       </div>
+      
+      {isAdmin && (
+        <div className="mt-auto px-4 pb-4">
+          <button 
+            className="w-full h-10 px-3 text-xs font-bold tracking-widest uppercase flex items-center gap-3 text-left transition-colors rounded-lg shrink-0 text-on-surface-variant hover:text-primary hover:bg-primary/10"
+            onClick={() => {
+              localStorage.setItem('betong_app_mode', 'admin');
+              window.location.reload();
+            }}
+          >
+            <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span> 
+            <span className="truncate">Admin Portal</span>
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

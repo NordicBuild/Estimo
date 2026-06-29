@@ -2,44 +2,65 @@ import React, { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, loginWithGoogle, logout } from '../supabase';
 
+export interface AppProfile {
+  id: string;
+  full_name: string | null;
+  role: 'user' | 'admin' | null;
+  company_id: string | null;
+}
+
 export function useAppAuth(
   initialAppMode: 'kalkyl' | 'admin',
   setAppMode: (mode: 'kalkyl' | 'admin') => void
 ) {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<AppProfile | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
   const [manualEmail, setManualEmail] = useState('');
   const [manualPassword, setManualPassword] = useState('');
   const [manualLoginError, setManualLoginError] = useState('');
   const [loginMode, setLoginMode] = useState<'kalkyl' | 'admin'>('kalkyl');
 
-  const updateRoleAndMode = async (sessionUser: User | null) => {
+  const fetchProfileForUser = async (sessionUser: User | null) => {
     if (!sessionUser) {
+      setProfile(null);
       setAppMode('kalkyl');
       return;
     }
     try {
       const { data } = await supabase
         .from('profiles')
-        .select('role')
+        .select('id, full_name, role, company_id')
         .eq('id', sessionUser.id)
         .single();
       
-      if (data && data.role === 'admin') {
-        setAppMode('admin');
+      if (data) {
+        setProfile(data as AppProfile);
+        if (data.role === 'admin') {
+          setAppMode('admin');
+        } else {
+          setAppMode('kalkyl');
+        }
       } else {
+        setProfile(null);
         setAppMode('kalkyl');
       }
     } catch (e) {
+      setProfile(null);
       setAppMode('kalkyl');
     }
+  };
+
+  const refreshProfile = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    await fetchProfileForUser(session?.user ?? null);
   };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const sessionUser = session?.user ?? null;
       setUser(sessionUser);
-      updateRoleAndMode(sessionUser).finally(() => {
+      fetchProfileForUser(sessionUser).finally(() => {
         setAuthInitialized(true);
       });
     });
@@ -49,7 +70,7 @@ export function useAppAuth(
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const sessionUser = session?.user ?? null;
       setUser(sessionUser);
-      updateRoleAndMode(sessionUser).finally(() => {
+      fetchProfileForUser(sessionUser).finally(() => {
         setAuthInitialized(true);
       });
       if (session?.user && window.opener && window.opener !== window) {
@@ -63,7 +84,7 @@ export function useAppAuth(
         supabase.auth.getSession().then(({ data: { session } }) => {
           const sessionUser = session?.user ?? null;
           setUser(sessionUser);
-          updateRoleAndMode(sessionUser).finally(() => {
+          fetchProfileForUser(sessionUser).finally(() => {
             setAuthInitialized(true);
           });
         });
@@ -102,10 +123,18 @@ export function useAppAuth(
   const handleLogout = async () => {
     await logout();
     setUser(null);
+    setProfile(null);
   };
+
+  const role = profile?.role ?? null;
+  const isAdmin = role === 'admin';
 
   return {
     user,
+    profile,
+    role,
+    isAdmin,
+    refreshProfile,
     authInitialized,
     manualEmail,
     setManualEmail,
