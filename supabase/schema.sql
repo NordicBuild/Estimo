@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     company_id UUID REFERENCES companies(id),
     email TEXT,
-    name TEXT,
+    full_name TEXT,
     role TEXT CHECK (role IN ('admin', 'manager', 'user', 'viewer')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()

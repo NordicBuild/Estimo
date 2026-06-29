@@ -114,7 +114,22 @@ export function useSupabaseData(
           .eq('id', user.id)
           .single();
 
-        if (profileError || !profile || !profile.company_id) {
+        if (profileError || !profile) {
+          setNeedsOnboarding(true);
+          setDataLoaded(true);
+          return;
+        }
+
+        if (profile.role === 'admin') {
+          setCurrentUserRole('admin');
+          setDataSpaceId(profile.company_id ?? null);
+          if (!profile.company_id) {
+            setDataLoaded(true);
+            return;
+          }
+        }
+
+        if (profile.role !== 'admin' && !profile.company_id) {
           setNeedsOnboarding(true);
           setDataLoaded(true);
           return;

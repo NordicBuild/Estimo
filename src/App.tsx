@@ -35,6 +35,7 @@ export default function App() {
     user,
     profile,
     refreshProfile,
+    profileLoading,
     isAdmin,
     authInitialized,
     manualEmail,
@@ -1128,7 +1129,7 @@ export default function App() {
     e.target.value = ''; // Reset input
   };
 
-  if (!authInitialized) {
+  if (!authInitialized || profileLoading) {
     return <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center"><div className="w-8 h-8 border-4 border-[var(--blue)] border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
@@ -1162,10 +1163,11 @@ export default function App() {
             <form onSubmit={handleManualLogin} className="mb-6 space-y-3 text-left">
               <div>
                 <input 
-                  type="text" 
-                  placeholder="Användarnamn" 
+                  type="email" 
+                  placeholder="E-postadress" 
                   value={manualEmail}
                   onChange={e => setManualEmail(e.target.value)}
+                  autoComplete="email"
                   className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:border-[var(--blue)] outline-none transition-colors"
                 />
               </div>
@@ -1175,6 +1177,7 @@ export default function App() {
                   placeholder="Lösenord" 
                   value={manualPassword}
                   onChange={e => setManualPassword(e.target.value)}
+                  autoComplete="current-password"
                   className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:border-[var(--blue)] outline-none transition-colors"
                 />
               </div>

@@ -19,12 +19,15 @@ export function useAppAuth(
   const [manualEmail, setManualEmail] = useState('');
   const [manualPassword, setManualPassword] = useState('');
   const [manualLoginError, setManualLoginError] = useState('');
-  const [loginMode, setLoginMode] = useState<'kalkyl' | 'admin'>('kalkyl');
+  const [loginMode, setLoginMode] = useState<'kalkyl' | 'admin'>(initialAppMode);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const fetchProfileForUser = async (sessionUser: User | null) => {
+    setProfileLoading(true);
     if (!sessionUser) {
       setProfile(null);
-      setAppMode('kalkyl');
+      setProfileLoading(false);
       return;
     }
     try {
@@ -36,23 +39,24 @@ export function useAppAuth(
       
       if (error) {
         console.error('profiles fetch', error);
+        setProfileError(error.message);
+      } else if (!data) {
+        setProfileError('Ingen profilrad hittades för användaren');
       }
       
       if (data) {
         setProfile(data as AppProfile);
-        if (data.role === 'admin') {
-          setAppMode('admin');
-        } else {
-          setAppMode('kalkyl');
-        }
+        setProfileError(null);
+        // Låt App.tsx hantera behörighetskontroll, tvinga inte appMode här
       } else {
         setProfile(null);
-        setAppMode('kalkyl');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('profiles fetch', e);
+      setProfileError(e.message || 'Ett okänt fel inträffade vid hämtning av profil');
       setProfile(null);
-      setAppMode('kalkyl');
+    } finally {
+      setProfileLoading(false);
     }
   };
 
@@ -106,6 +110,7 @@ export function useAppAuth(
   const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setManualLoginError('Hämtar användare...');
+    setAppMode(loginMode);
     
     const { error } = await supabase.auth.signInWithPassword({
       email: manualEmail,
@@ -118,6 +123,8 @@ export function useAppAuth(
         swedishError = 'Felaktigt användarnamn eller lösenord.';
       } else if (error.message.includes('Email not confirmed')) {
         swedishError = 'E-postadressen är inte bekräftad.';
+      } else {
+        swedishError = 'Inloggningsfel: ' + error.message;
       }
       setManualLoginError(swedishError);
     } else {
@@ -137,6 +144,8 @@ export function useAppAuth(
   return {
     user,
     profile,
+    profileLoading,
+    profileError,
     role,
     isAdmin,
     refreshProfile,
