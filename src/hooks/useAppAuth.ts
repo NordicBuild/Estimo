@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, loginWithGoogle, logout } from '../supabase';
+import { logEvent } from '../lib/audit';
 
 export interface AppProfile {
   id: string;
   full_name: string | null;
   role: 'admin' | 'manager' | 'user' | 'viewer' | null;
   company_id: string | null;
+  is_platform_admin?: boolean;
 }
 
 export function useAppAuth(
@@ -31,11 +33,22 @@ export function useAppAuth(
       return;
     }
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, company_id')
+        .select('id, full_name, role, company_id, is_platform_admin')
         .eq('id', sessionUser.id)
-        .single();
+        .maybeSingle();
+        
+      // Fallback if is_platform_admin column doesn't exist yet
+      if (error && error.message.includes('is_platform_admin')) {
+        const fallback = await supabase
+          .from('profiles')
+          .select('id, full_name, role, company_id')
+          .eq('id', sessionUser.id)
+          .maybeSingle();
+        data = fallback.data ? { ...fallback.data, is_platform_admin: false } as any : null;
+        error = fallback.error;
+      }
       
       if (error) {
         console.error('profiles fetch', error);
@@ -82,6 +95,9 @@ export function useAppAuth(
       fetchProfileForUser(sessionUser).finally(() => {
         setAuthInitialized(true);
       });
+      if (_event === 'SIGNED_IN') {
+        logEvent('login', { method: 'session_auth' });
+      }
       if (session?.user && window.opener && window.opener !== window) {
          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
          window.close();
@@ -140,6 +156,7 @@ export function useAppAuth(
 
   const role = profile?.role ?? null;
   const isAdmin = role === 'admin';
+  const isPlatformAdmin = profile?.is_platform_admin === true;
 
   return {
     user,
@@ -148,6 +165,7 @@ export function useAppAuth(
     profileError,
     role,
     isAdmin,
+    isPlatformAdmin,
     refreshProfile,
     authInitialized,
     manualEmail,

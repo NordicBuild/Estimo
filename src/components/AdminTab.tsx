@@ -5,6 +5,7 @@ import { User } from "@supabase/supabase-js";
 import { AdminRegisterTab } from "./AdminRegisterTab";
 import { AdminFakturorTab } from "./AdminFakturorTab";
 import { AdminInstallningarTab } from "./AdminInstallningarTab";
+import { AdminAnalysTab } from "./AdminAnalysTab";
 
 export interface AppUser {
   id: string;
@@ -14,11 +15,27 @@ export interface AppUser {
   companyId: string;
 }
 
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price_month: number;
+  max_seats: number | null;
+  features: Record<string, boolean>;
+}
+
+export interface CompanySubscription {
+  id?: string;
+  plan_id: string;
+  status: "trial" | "active" | "past_due" | "canceled";
+  seats: number;
+  period_end: string | null;
+}
+
 export interface Company {
   id: string;
   name: string;
   orgNr: string;
-  subscriptionActive: boolean;
+  subscription?: CompanySubscription;
 }
 
 export interface Invoice {
@@ -31,7 +48,7 @@ export interface Invoice {
 
 interface Props {
   user: User | null;
-  activeTab?: "oversikt" | "kunder" | "fakturor" | "register" | "installningar";
+  activeTab?: "oversikt" | "kunder" | "fakturor" | "register" | "installningar" | "analys";
   userSettings?: any;
   setUserSettings?: any;
 
@@ -55,6 +72,7 @@ interface Props {
   addCategory?: any;
   renameCategory?: any;
   removeCategory?: any;
+  isPlatformAdmin?: boolean;
 }
 
 export function AdminTab({ 
@@ -62,10 +80,11 @@ export function AdminTab({
   userSettings, setUserSettings,
   materials, updateMaterial, updateMultipleMaterials, addMaterial, addMaterials, deleteMaterial, deleteMultipleMaterials,
   arbetsData, updateArbete, updateMultipleArbeten, addArbete, addArbeten, deleteArbete, deleteMultipleArbeten,
-  customCategories, addCategory, renameCategory, removeCategory
+  customCategories, addCategory, renameCategory, removeCategory, isPlatformAdmin
 }: Props) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{
     message: string;
@@ -319,10 +338,18 @@ export function AdminTab({
     try {
       setLoading(true);
       setDbError(false);
+
+      // Load plans
+      const { data: plansData, error: plansErr } = await supabase
+        .from("subscription_plans")
+        .select("*");
+      if (plansData) {
+        setPlans(plansData);
+      }
       
       const { data: compData, error: compErr } = await supabase
         .from("companies")
-        .select("*");
+        .select("*, subscriptions(*)");
         
       if (compErr) {
         if (compErr.code === "PGRST205" || compErr.code === "42P01" || compErr.code === "42501" || (compErr as any).message?.includes('not found')) setDbError(true);
@@ -330,12 +357,26 @@ export function AdminTab({
       }
       
       if (compData) {
-        setCompanies(compData.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          orgNr: c.org_nr || "",
-          subscriptionActive: true
-        })));
+        setCompanies(compData.map((c: any) => {
+          let subData = undefined;
+          if (c.subscriptions && c.subscriptions.length > 0) {
+            subData = c.subscriptions[0];
+          } else if (c.subscriptions && !Array.isArray(c.subscriptions)) {
+            subData = c.subscriptions;
+          }
+          return {
+            id: c.id,
+            name: c.name,
+            orgNr: c.org_nr || "",
+            subscription: subData ? {
+              id: subData.id,
+              plan_id: subData.plan_id,
+              status: subData.status,
+              seats: subData.seats,
+              period_end: subData.period_end
+            } : undefined
+          };
+        }));
       }
 
       const { data: userData, error: userErr } = await supabase
@@ -373,12 +414,37 @@ export function AdminTab({
         .single();
         
       if (error) throw error;
+
+      // Seed the company with global defaults
+      await supabase.rpc('seed_company_defaults', { target_company: data.id });
+
+      // Auto-create trial subscription
+      const { data: subData, error: subError } = await supabase
+        .from("subscriptions")
+        .upsert({
+          company_id: data.id,
+          plan_id: "free",
+          status: "trial",
+          seats: 1
+        }, { onConflict: "company_id" })
+        .select()
+        .single();
+      
+      if (subError) {
+        console.error("Kunde inte skapa prenumeration:", subError);
+      }
       
       setCompanies([...companies, {
         id: data.id,
         name: data.name,
         orgNr: data.org_nr || "",
-        subscriptionActive: true
+        subscription: subData ? {
+          id: subData.id,
+          plan_id: subData.plan_id,
+          status: subData.status,
+          seats: subData.seats,
+          period_end: subData.period_end
+        } : undefined
       }]);
       setNewCompany({ name: "", orgNr: "" });
       showNotification("Företag tillagt.", "success");
@@ -392,7 +458,43 @@ export function AdminTab({
   };
 
   const handleAddUser = async (overrideCompanyId?: string) => {
-    showNotification("Användare kan endast skapas via inloggning. Be användaren logga in först.", "error");
+    const compId = overrideCompanyId || newUser.companyId;
+    if (!newUser.email || !compId) return;
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          email: newUser.email,
+          role: newUser.role,
+          company_id: compId,
+          full_name: "", 
+          send_invite: true
+        }
+      });
+      
+      if (error) {
+        throw new Error(error.message || 'Okänt fel vid anrop till edge function');
+      }
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      if (data.tempPassword) {
+        setGeneratedCredentials({ email: data.email, password: data.tempPassword });
+      } else if (data.invited) {
+        showNotification(`Inbjudan skickad till ${data.email}`, "success");
+      }
+      
+      setNewUser({ ...newUser, email: "" });
+      loadAdminData();
+    } catch (err: any) {
+      console.error(err);
+      showNotification(
+        "Kunde inte skapa användaren: " + (err.message || "Okänt fel"),
+        "error"
+      );
+    }
   };
 
   const handleRemoveCompany = async (id: string) => {
@@ -412,12 +514,19 @@ export function AdminTab({
 
   const handleRemoveUser = async (id: string) => {
     try {
-      const { error } = await supabase.from("profiles").delete().eq("id", id);
-      if (error) throw error;
       setAppUsers(appUsers.filter((u) => u.id !== id));
+      
+      const { data, error } = await supabase.functions.invoke('admin-delete-user', {
+        body: { userId: id }
+      });
+      
+      if (error) throw new Error(error.message || "Ett fel uppstod");
+      if (data?.error) throw new Error(data.error);
+
       showNotification("Användare borttagen.", "success");
     } catch (err: any) {
       console.error(err);
+      loadAdminData();
       showNotification(
         "Kunde inte ta bort användaren: " + (err.message || "Okänt fel"),
         "error",
@@ -472,29 +581,53 @@ export function AdminTab({
     }
   };
 
-  const handleToggleSubscription = async (id: string) => {
+  const handleUpdateSubscription = async (
+    companyId: string,
+    updates: Partial<CompanySubscription>
+  ) => {
     try {
-      const updatedCompanies = companies.map((c) =>
-        c.id === id ? { ...c, subscriptionActive: !c.subscriptionActive } : c,
-      );
-      setCompanies(updatedCompanies);
-      const { error } = await supabase
-        .from("app_state")
-        .upsert({ id: "global_companies", data: updatedCompanies });
-      if (error && error.code !== "PGRST205") throw error;
-      showNotification("Prenumerationsstatus ändrad.", "success");
+      const company = companies.find(c => c.id === companyId);
+      if (!company) return;
+
+      const currentSub = company.subscription || { plan_id: 'free', status: 'active', seats: 1, period_end: null };
+      const newSub = { ...currentSub, ...updates };
+
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .upsert({
+          company_id: companyId,
+          plan_id: newSub.plan_id,
+          status: newSub.status,
+          seats: newSub.seats,
+          period_end: newSub.period_end
+        }, { onConflict: 'company_id' })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setCompanies(companies.map(c => 
+        c.id === companyId ? {
+          ...c,
+          subscription: {
+            id: data.id,
+            plan_id: data.plan_id,
+            status: data.status,
+            seats: data.seats,
+            period_end: data.period_end
+          }
+        } : c
+      ));
+
+      showNotification("Prenumeration uppdaterad.", "success");
     } catch (err) {
       console.error(err);
-      showNotification("Kunde inte ändra prenumerationsstatus.", "error");
+      showNotification("Kunde inte uppdatera prenumerationen.", "error");
     }
   };
 
   // Basic authorization: Only display if logged in user is admin, or display a message
   const currentUserRecord = appUsers.find((u) => u.email === user?.email);
-  const isGlobalAdmin =
-    currentUserRecord?.role === "admin" ||
-    user?.email?.includes("admin") ||
-    user?.email?.toLowerCase() === "mtoumia@gmail.com"; // Fallback for debugging
 
   if (loading) {
     return (
@@ -512,7 +645,7 @@ export function AdminTab({
     );
   }
 
-  if (!isGlobalAdmin) {
+  if (!isPlatformAdmin) {
     return (
       <div className="p-6">
         <h2 className="text-xl font-bold text-[var(--red)] mb-4">
@@ -594,69 +727,23 @@ NOTIFY pgrst, 'reload schema';
       <div className="p-6 max-w-7xl mx-auto relative">
         {renderDbWarning()}
         <h2 className="text-2xl font-bold text-gray-800 border-b pb-3 mb-6">
-          <i className="fa-solid fa-chart-line mr-3 text-[var(--blue)]"></i>
+          <i className="fa-solid fa-house mr-3 text-[var(--blue)]"></i>
           Översikt
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg border border-[var(--border)] shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-50 text-[var(--blue)] rounded-full flex items-center justify-center text-xl">
-              <i className="fa-solid fa-building"></i>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-800">
-                {companies.length}
-              </div>
-              <div className="text-sm text-gray-500 font-medium">
-                Registrerade företag
-              </div>
-            </div>
+        <div className="bg-white border md:p-8 p-6 text-center border-[var(--border)] rounded-lg shadow-sm mb-6">
+          <div className="w-16 h-16 bg-blue-50 text-[var(--blue)] flex items-center justify-center rounded-full mx-auto mb-4 text-2xl">
+            <i className="fa-solid fa-laptop-code"></i>
           </div>
-
-          <div className="bg-white p-6 rounded-lg border border-[var(--border)] shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center text-xl">
-              <i className="fa-solid fa-users"></i>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-800">
-                {appUsers.length}
-              </div>
-              <div className="text-sm text-gray-500 font-medium">
-                Aktiva användare
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg border border-[var(--border)] shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center text-xl">
-              <i className="fa-solid fa-check-circle"></i>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-800">
-                {companies.filter((c) => c.subscriptionActive).length}
-              </div>
-              <div className="text-sm text-gray-500 font-medium">
-                Aktiva prenumerationer
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg border border-[var(--border)] shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center text-xl">
-              <i className="fa-solid fa-folder-open"></i>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-800">
-                {loadingGlobalStats ? <i className="fa-solid fa-spinner fa-spin text-sm"></i> : globalStats.totalProjects}
-              </div>
-              <div className="text-sm text-gray-500 font-medium">
-                Totalt antal projekt
-              </div>
-            </div>
-          </div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">
+            Plattformsadministration
+          </h3>
+          <p className="text-gray-500 max-w-md mx-auto">
+            Använd menyn till vänster för att navigera mellan funktioner som företag, plattformsinställningar och analys.
+          </p>
         </div>
 
-        <div className="bg-white border md:p-8 p-6 border-[var(--border)] rounded-lg shadow-sm mb-6">
+        <div className="bg-white border md:p-8 p-6 border-[var(--border)] rounded-lg shadow-sm">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-1">
@@ -674,29 +761,13 @@ NOTIFY pgrst, 'reload schema';
             </button>
           </div>
         </div>
-
-        <div className="bg-white border md:p-8 p-6 text-center border-[var(--border)] rounded-lg shadow-sm">
-          <div className="w-16 h-16 bg-blue-50 text-[var(--blue)] flex items-center justify-center rounded-full mx-auto mb-4 text-2xl">
-            <i className="fa-solid fa-chart-pie"></i>
-          </div>
-          <h3 className="text-lg font-semibold text-gray-800 mb-2">
-            Mer detaljerad statistik kommer snart
-          </h3>
-          <p className="text-gray-500 max-w-md mx-auto">
-            Här kommer grafer och mer detaljerad systemanvändning att visas. ({globalStats.totalDataSources} datatabeller indexerade)
-          </p>
-        </div>
       </div>
     );
   }
 
   if (activeTab === "register") {
     return (
-      <AdminRegisterTab 
-        materials={materials} updateMaterial={updateMaterial} updateMultipleMaterials={updateMultipleMaterials} addMaterial={addMaterial} addMaterials={addMaterials} deleteMaterial={deleteMaterial} deleteMultipleMaterials={deleteMultipleMaterials}
-        arbetsData={arbetsData} updateArbete={updateArbete} updateMultipleArbeten={updateMultipleArbeten} addArbete={addArbete} addArbeten={addArbeten} deleteArbete={deleteArbete} deleteMultipleArbeten={deleteMultipleArbeten}
-        customCategories={customCategories} addCategory={addCategory} renameCategory={renameCategory} removeCategory={removeCategory}
-      />
+      <AdminRegisterTab />
     );
   }
 
@@ -706,6 +777,10 @@ NOTIFY pgrst, 'reload schema';
 
   if (activeTab === "installningar") {
     return <AdminInstallningarTab userSettings={userSettings} setUserSettings={setUserSettings} />;
+  }
+
+  if (activeTab === "analys") {
+    return <AdminAnalysTab />;
   }
 
   return (
@@ -873,42 +948,49 @@ NOTIFY pgrst, 'reload schema';
                         Org: {comp.orgNr || "-"}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className={`text-xs px-2 py-1 rounded font-semibold ${comp.subscriptionActive ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-red-100 text-red-700 hover:bg-red-200"}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleSubscription(comp.id);
-                        }}
-                        title="Slå på/av prenumeration"
-                      >
-                        {comp.subscriptionActive ? "Aktiv" : "Inaktiv"}
-                      </button>
-                      <button
-                        className="text-gray-400 hover:text-blue-500 w-6 h-6 flex items-center justify-center transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCompany(comp);
-                        }}
-                        title="Redigera företag"
-                      >
-                        <i className="fa-solid fa-pen-to-square"></i>
-                      </button>
-                      <button
-                        className="text-gray-400 hover:text-red-500 w-6 h-6 flex items-center justify-center transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (
-                            confirm(
-                              "Är du säker på att du vill ta bort företaget?",
+                    <div className="flex flex-col gap-1 items-end">
+                      {comp.subscription && (
+                        <div className="flex gap-1">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold uppercase">
+                            {plans.find(p => p.id === comp.subscription?.plan_id)?.name || comp.subscription.plan_id}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
+                            comp.subscription.status === 'active' ? 'bg-green-100 text-green-700' :
+                            comp.subscription.status === 'trial' ? 'bg-yellow-100 text-yellow-700' :
+                            comp.subscription.status === 'past_due' ? 'bg-orange-100 text-orange-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {comp.subscription.status}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="text-gray-400 hover:text-blue-500 w-6 h-6 flex items-center justify-center transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCompany(comp);
+                          }}
+                          title="Redigera företag"
+                        >
+                          <i className="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button
+                          className="text-gray-400 hover:text-red-500 w-6 h-6 flex items-center justify-center transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (
+                              confirm(
+                                "Är du säker på att du vill ta bort företaget?",
+                              )
                             )
-                          )
-                            handleRemoveCompany(comp.id);
-                        }}
-                        title="Ta bort företag"
-                      >
-                        <i className="fa-solid fa-trash text-sm"></i>
-                      </button>
+                              handleRemoveCompany(comp.id);
+                          }}
+                          title="Ta bort företag"
+                        >
+                          <i className="fa-solid fa-trash text-sm"></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -936,6 +1018,68 @@ NOTIFY pgrst, 'reload schema';
             </button>
           )}
         </h2>
+
+        {selectedCompany && (
+          <div className="mb-6 bg-purple-50/50 p-4 rounded-md border border-purple-100 shadow-sm">
+            <h3 className="text-sm font-bold text-purple-900 mb-3 flex justify-between items-center">
+              <span><i className="fa-solid fa-crown mr-2"></i>Prenumeration</span>
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-purple-700 mb-1">Plan</label>
+                <select 
+                  className="w-full border-purple-200 rounded px-2 py-1.5 text-sm"
+                  value={selectedCompany.subscription?.plan_id || 'free'}
+                  onChange={(e) => handleUpdateSubscription(selectedCompany.id, { plan_id: e.target.value })}
+                >
+                  {plans.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.price_month} kr/mån)</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-purple-700 mb-1">Status</label>
+                <select 
+                  className="w-full border-purple-200 rounded px-2 py-1.5 text-sm"
+                  value={selectedCompany.subscription?.status || 'active'}
+                  onChange={(e) => handleUpdateSubscription(selectedCompany.id, { status: e.target.value as any })}
+                >
+                  <option value="trial">Trial</option>
+                  <option value="active">Active</option>
+                  <option value="past_due">Past Due</option>
+                  <option value="canceled">Canceled</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-purple-700 mb-1">Antal licenser (Seats)</label>
+                <input 
+                  type="number"
+                  min="1"
+                  className="w-full border-purple-200 rounded px-2 py-1.5 text-sm"
+                  value={selectedCompany.subscription?.seats || 1}
+                  onChange={(e) => {
+                    const plan = plans.find(p => p.id === (selectedCompany.subscription?.plan_id || 'free'));
+                    const val = parseInt(e.target.value, 10);
+                    if (plan?.max_seats && val > plan.max_seats) {
+                      showNotification(`Denna plan tillåter max ${plan.max_seats} licenser.`, "error");
+                      return;
+                    }
+                    handleUpdateSubscription(selectedCompany.id, { seats: val });
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-purple-700 mb-1">Giltig till (Period End)</label>
+                <input 
+                  type="date"
+                  className="w-full border-purple-200 rounded px-2 py-1.5 text-sm"
+                  value={selectedCompany.subscription?.period_end || ''}
+                  onChange={(e) => handleUpdateSubscription(selectedCompany.id, { period_end: e.target.value || null })}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {selectedCompany && (
           <div className="mb-6 grid grid-cols-2 gap-4">
@@ -1202,14 +1346,6 @@ NOTIFY pgrst, 'reload schema';
           </ul>
         </div>
 
-        <div className="mt-4 border-t pt-4">
-          <h3 className="font-bold text-sm text-gray-700 mb-2">
-            Inloggningsinformation:
-          </h3>
-          <p className="text-xs text-gray-600">
-            Standardlösenordet för alla är: <strong>kalkyl2026</strong>
-          </p>
-        </div>
       </div>
     </div>
     </div>

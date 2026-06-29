@@ -112,7 +112,7 @@ export function useSupabaseData(
           .from('profiles')
           .select('company_id, role')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
         if (profileError || !profile) {
           setNeedsOnboarding(true);

@@ -14,6 +14,7 @@ import { useSupabaseData } from './hooks/useSupabaseData';
 import { WorkspaceActions, WorkspaceNav } from "./components/WorkspaceToolbar";
 import { supabase, logout, loginWithGoogle } from "./supabase";
 import { User } from '@supabase/supabase-js';
+import { logEvent } from './lib/audit';
 // import removed
 import { calculateBaseMoments, calculateDefaultMoments } from "./calculationHelpers";
 
@@ -27,7 +28,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek' | 'mina_uppgifter'>(() => {
     return (localStorage.getItem('betong_active_tab') as any) || 'projekt';
   });
-  const [adminSubTab, setAdminSubTab] = useState<'oversikt' | 'kunder' | 'fakturor' | 'register' | 'installningar'>(() => {
+  const [adminSubTab, setAdminSubTab] = useState<'oversikt' | 'kunder' | 'fakturor' | 'register' | 'installningar' | 'analys'>(() => {
     return (localStorage.getItem('betong_admin_subtab') as any) || 'oversikt';
   });
   
@@ -37,6 +38,7 @@ export default function App() {
     refreshProfile,
     profileLoading,
     isAdmin,
+    isPlatformAdmin,
     authInitialized,
     manualEmail,
     setManualEmail,
@@ -188,6 +190,7 @@ export default function App() {
             tRate: 425, mRate: 85, trRate: 0, timeFactor: 1.0
           }
         };
+        logEvent('project_created', { name: newProj.projectInfo.name, type: 'new' });
         setProjects(prev => {
           const updated = [...prev, newProj];
           localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
@@ -213,6 +216,7 @@ export default function App() {
       projectInfo: { ...target.projectInfo, name: `${target.projectInfo.name} (Kopia)` }
     };
     
+    logEvent('project_created', { name: newProj.projectInfo.name, type: 'duplicate', sourceId: id });
     setProjects(prev => {
       const updated = [...prev, newProj];
       localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
@@ -1257,6 +1261,9 @@ export default function App() {
                     }]);
                     
                   if (profErr) throw profErr;
+
+                  // Seed the company with global defaults
+                  await supabase.rpc('seed_company_defaults', { target_company: company.id });
                   
                   window.location.reload();
                 } catch (e: any) {
@@ -1279,7 +1286,7 @@ export default function App() {
   }
 
   if (appMode === 'admin') {
-    if (!isAdmin) {
+    if (!isPlatformAdmin) {
       return (
         <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-4">
           <div className="bg-surface-container-lowest p-8 rounded-2xl border border-outline-variant max-w-md w-full text-center shadow-lg">
@@ -1323,7 +1330,13 @@ export default function App() {
                       className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors ${adminSubTab === 'oversikt' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                       onClick={() => setAdminSubTab('oversikt')}
                    >
-                      <i className="fa-solid fa-chart-line w-5 text-center"></i> Översikt
+                      <i className="fa-solid fa-house w-5 text-center"></i> Översikt
+                   </button>
+                   <button 
+                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors ${adminSubTab === 'analys' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                      onClick={() => setAdminSubTab('analys')}
+                   >
+                      <i className="fa-solid fa-chart-line w-5 text-center"></i> Analys
                    </button>
                    <button 
                       className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors text-[var(--blue-d)] ${adminSubTab === 'kunder' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
@@ -1364,6 +1377,7 @@ export default function App() {
              </div>
              <main className="flex-1 overflow-auto bg-gray-50/50">
                  <AdminTab 
+                  isPlatformAdmin={isPlatformAdmin}
                   user={user} 
                   activeTab={adminSubTab} 
                   userSettings={userSettings} setUserSettings={setUserSettings}
@@ -1467,6 +1481,7 @@ export default function App() {
           setCompanyInfo={setCompanyInfo}
           currentProject={projects.find(p => p.id === activeProjectId)}
           saveVersion={(name) => {
+            logEvent('calc_saved', { projectId: activeProjectId, versionName: name });
             setProjects(prev => prev.map(p => {
               if (p.id === activeProjectId) {
                 return { 
