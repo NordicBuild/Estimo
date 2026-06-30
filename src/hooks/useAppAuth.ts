@@ -85,6 +85,9 @@ export function useAppAuth(
       fetchProfileForUser(sessionUser).finally(() => {
         setAuthInitialized(true);
       });
+    }).catch(err => {
+      console.error("Failed to get session", err);
+      setAuthInitialized(true);
     });
 
     const {
@@ -112,6 +115,8 @@ export function useAppAuth(
           fetchProfileForUser(sessionUser).finally(() => {
             setAuthInitialized(true);
           });
+        }).catch(err => {
+          console.error("Failed to get session on oauth success", err);
         });
       }
     };

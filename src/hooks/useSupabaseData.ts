@@ -303,7 +303,7 @@ export function useSupabaseData(
           activeChannel = c as any;
         }
       }
-    });
+    }).catch(e => console.error("loadData network error", e));
 
     return () => {
       isMounted = false;
@@ -328,49 +328,49 @@ export function useSupabaseData(
     localStorage.setItem('betong_folders', JSON.stringify(folders));
     if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `folders_${dataSpaceId}`, company_id: dataSpaceId, data: folders }).then(({error}) => {
       if (error) console.warn("folder sync error", error);
-    });
+    }, e => console.error("folder sync network error", e));
   }, [folders, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_active_project_id', activeProjectId);
     if (dbReady && user && dataSpaceId) supabase.from('app_state').upsert({ id: `active_project_id_${user.id}`, company_id: dataSpaceId, data: activeProjectId }).then(({error}) => {
       if (error) console.warn("active project sync error", error);
-    });
+    }, e => console.error("active project sync network error", e));
   }, [activeProjectId, user, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_custom_categories', JSON.stringify(customCategories));
     if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: customCategories }).then(({error}) => {
       if (error) console.warn("custom categories sync error", error);
-    });
+    }, e => console.error("custom categories sync network error", e));
   }, [customCategories, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_company_info', JSON.stringify(companyInfo));
     if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_info_${dataSpaceId}`, company_id: dataSpaceId, data: companyInfo }).then(({error}) => {
       if (error) console.warn("company info sync error", error);
-    });
+    }, e => console.error("company info sync network error", e));
   }, [companyInfo, dataSpaceId, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_user_settings', JSON.stringify(userSettings));
     if (dbReady && user && dataSpaceId) supabase.from('app_state').upsert({ id: `user_settings_${user.id}`, company_id: dataSpaceId, data: userSettings }).then(({error}) => {
       if (error) console.warn("user settings sync error", error);
-    });
+    }, e => console.error("user settings sync network error", e));
   }, [userSettings, user, dbReady]);
 
   useEffect(() => {
     localStorage.setItem('betong_company_tidsfaktorer', JSON.stringify(companyTidsfaktorer));
     if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `company_tidsfaktorer_${dataSpaceId}`, company_id: dataSpaceId, data: companyTidsfaktorer }).then(({error}) => {
       if (error) console.warn("companyTidsfaktorer sync error", error);
-    });
+    }, e => console.error("companyTidsfaktorer sync network error", e));
   }, [companyTidsfaktorer, dataSpaceId, dbReady]);
 
   useEffect(() => {
     if (projects.length > 0) {
       if (dbReady && dataSpaceId) supabase.from('app_state').upsert({ id: `projects_${dataSpaceId}`, company_id: dataSpaceId, data: projects }).then(({error}) => {
         if (error) console.warn("projects sync error", error);
-      });
+      }, e => console.error("projects sync network error", e));
     }
   }, [projects, dataSpaceId, dbReady]);
 
