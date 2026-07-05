@@ -61,10 +61,10 @@ interface WorkspaceNavProps {
   setActiveTab: (val: any) => void;
   sidebarOpen?: boolean;
   setSidebarOpen?: (val: boolean) => void;
-  isAdmin?: boolean;
+  isPlatformAdmin?: boolean;
 }
 
-export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen, isAdmin }: WorkspaceNavProps) {
+export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen, isPlatformAdmin }: WorkspaceNavProps) {
   const kalkylTabs = ['kalkyl', 'material', 'arbete', 'analys', 'sammanstalln', 'slutsida', 'planering', 'anbud', 'inkop', 'prognos'];
   const isKalkylActive = kalkylTabs.includes(activeTab);
   
@@ -173,7 +173,7 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
         })}
       </div>
       
-      {isAdmin && (
+      {isPlatformAdmin && (
         <div className="mt-auto px-4 pb-4">
           <button 
             className="w-full h-10 px-3 text-xs font-bold tracking-widest uppercase flex items-center gap-3 text-left transition-colors rounded-lg shrink-0 text-on-surface-variant hover:text-primary hover:bg-primary/10"

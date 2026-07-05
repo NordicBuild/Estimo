@@ -126,7 +126,7 @@ export const useBIMStore = create<BIMState>()(
               loading: false
             });
           } catch (err: any) {
-            console.error('[BIMStore] Failed to set active model', err);
+            // warning removed
             set({ error: err.message, loading: false });
           }
         },

@@ -152,7 +152,7 @@ export function KalkylTab(props: Props) {
 
   useEffect(() => {
     if (companyId) {
-      listRecept(companyId).then(setReceptList).catch(console.error);
+      listRecept(companyId).then(setReceptList).catch(() => {});
     }
   }, [companyId]);
 

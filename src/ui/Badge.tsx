@@ -1,7 +1,7 @@
 import React from 'react';
 
 export interface BadgeProps {
-  variant?: 'blue' | 'green' | 'amber' | 'purple' | 'gray';
+  variant?: 'blue' | 'green' | 'amber' | 'purple' | 'gray' | 'red';
   children: React.ReactNode;
   className?: string;
 }
@@ -13,6 +13,7 @@ export function Badge({ variant = 'gray', children, className = '' }: BadgeProps
     amber: 'bg-[var(--amber-lt)] text-[var(--amber)]',
     purple: 'bg-[var(--purple-lt)] text-[var(--purple)]',
     gray: 'bg-[var(--color-surface-container-high)] text-[var(--color-on-surface-variant)]',
+    red: 'bg-[var(--red-lt)] text-[var(--red)]',
   };
   
   return (

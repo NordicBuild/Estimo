@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     company_id UUID REFERENCES companies(id),
     email TEXT,
     full_name TEXT,
+    phone TEXT,
+    title TEXT,
     role TEXT CHECK (role IN ('admin', 'manager', 'user', 'viewer')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -557,4 +559,37 @@ $$;
 REVOKE ALL ON FUNCTION public.get_platform_stats() FROM public;
 GRANT EXECUTE ON FUNCTION public.get_platform_stats() TO authenticated;
 
+-- 15. Trigger som låser role och company_id vid självuppdatering
+CREATE OR REPLACE FUNCTION public.lock_profile_privileged_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.is_platform_admin() THEN
+    NEW.role       := OLD.role;
+    NEW.company_id := OLD.company_id;
+  END IF;
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_lock_profile_privileged_fields ON public.profiles;
+CREATE TRIGGER trg_lock_profile_privileged_fields
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.lock_profile_privileged_fields();
+
+-- 16. UPDATE-policy för egen rad
+DROP POLICY IF EXISTS "profiles update egen rad" ON public.profiles;
+CREATE POLICY "profiles update egen rad" ON public.profiles
+  FOR UPDATE
+  USING (id = auth.uid())
+  WITH CHECK (id = auth.uid());
+
 NOTIFY pgrst, 'reload schema';
+
+-- 17. Add phone and title
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS title TEXT;

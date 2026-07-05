@@ -22,7 +22,7 @@ export function UtfallInmatning({ byggdelar, projectId, companyId }: Props) {
         map[d.line_key] = d;
       });
       setUtfall(map);
-    }).catch(console.error).finally(() => setLoading(false));
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [companyId, projectId]);
 
   const handleUpdate = (line_key: string, field: 'ac' | 'fardiggrad' | 'manuell_eac', value: number | null) => {
@@ -44,7 +44,7 @@ export function UtfallInmatning({ byggdelar, projectId, companyId }: Props) {
       if (prev[u.line_key]) clearTimeout(prev[u.line_key]);
       
       const timer = setTimeout(() => {
-        saveUtfall(u).catch(console.error);
+        saveUtfall(u).catch(() => {});
       }, 500);
       
       return { ...prev, [u.line_key]: timer };

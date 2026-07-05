@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { Material, ArbetsMoment, Byggdel, INITIAL_TIDSFAKTORER, TYPE_UNIT } from "../data";
 import { calculateBaseMoments, calculateDefaultMoments } from "../calculationHelpers";
 
-const ByggdelSketch = lazy(() => import('./ByggdelSketch').then(m => ({ default: m.ByggdelSketch })));
+import { ByggdelSketch } from './ByggdelSketch';
 
 interface Props {
   isOpen: boolean;

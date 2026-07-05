@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { supabase } from '../supabase';
 
-const AnalysCharts = lazy(() => import('./AnalysCharts'));
+import AnalysCharts from './AnalysCharts';
 
 export function AdminAnalysTab() {
   const [stats, setStats] = useState<any>(null);
@@ -82,7 +82,7 @@ export function AdminAnalysTab() {
       setAuditLogs(logsData || []);
 
     } catch (e) {
-      console.error("Fel vid hämtning av analysdata", e);
+      // warning removed
     } finally {
       setLoading(false);
     }

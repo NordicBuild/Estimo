@@ -2,8 +2,8 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { supabase } from '../supabase';
 import { Material, ArbetsMoment, INITIAL_MATERIALS, INITIAL_ARBETS_DATA } from '../data';
 
-const MaterialTab = lazy(() => import('./MaterialTab').then(m => ({ default: m.MaterialTab })));
-const ArbetsmomentTab = lazy(() => import('./ArbetsmomentTab').then(m => ({ default: m.ArbetsmomentTab })));
+import { MaterialTab } from './MaterialTab';
+import { ArbetsmomentTab } from './ArbetsmomentTab';
 
 export function AdminRegisterTab() {
   const [activeTab, setActiveTab] = useState<'material' | 'arbete'>('material');
@@ -37,7 +37,7 @@ export function AdminRegisterTab() {
       setArbetsData(arbs ? arbs.data : INITIAL_ARBETS_DATA);
       setCustomCategories(cats ? cats.data : []);
     } catch (e: any) {
-      console.error("Fel vid hämtning av global_defaults", e);
+      // warning removed
       showNotification("Kunde inte ladda data", "error");
     } finally {
       setLoading(false);
@@ -56,7 +56,7 @@ export function AdminRegisterTab() {
       });
       if (error) throw error;
     } catch (e: any) {
-      console.error(`Fel vid sparning av ${id}`, e);
+      // warning removed
       showNotification(`Kunde inte spara ${id}`, "error");
     }
   };

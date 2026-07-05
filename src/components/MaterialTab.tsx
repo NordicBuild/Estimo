@@ -5,7 +5,7 @@ import { EXAMPLE_CO2_FACTORS } from '../climate/co2';
 import { OpenLcaClient, Ref, CalcSetup } from '../climate/openLcaClient';
 import { Button, IconButton, Input, Select, Modal, Badge, Toolbar, Table, Thead, Tbody, Tr, Th, Td } from '../ui';
 
-const MaterialPriceChart = lazy(() => import('./MaterialPriceChart'));
+import MaterialPriceChart from './MaterialPriceChart';
 
 interface Props {
   materials: Material[];
@@ -121,7 +121,7 @@ export function MaterialTab({ materials, customCategories, updateMaterial, updat
            if (showNotification) showNotification(`${newMaterials.length} material importerades framgångsrikt.`, 'success');
         }
       } catch (err) {
-         console.error(err);
+         // warning removed
          if (showNotification) showNotification("Ett fel uppstod vid inläsning av Excel-filen.", 'error');
       }
       if (fileInputRef.current) {

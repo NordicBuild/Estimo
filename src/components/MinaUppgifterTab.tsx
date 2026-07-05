@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabase';
+import { supabase, logout } from '../supabase';
 import { User } from '@supabase/supabase-js';
 import { AppProfile } from '../hooks/useAppAuth';
-import { Input, Button } from '../ui';
+import { Input, Button, Badge } from '../ui';
+import { Building2 } from 'lucide-react';
 
 interface MinaUppgifterTabProps {
   user: User | null;
@@ -11,15 +12,18 @@ interface MinaUppgifterTabProps {
 }
 
 export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifterTabProps) {
-  // Namn state
+  // Profil state
   const [name, setName] = useState('');
-  const [nameStatus, setNameStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [title, setTitle] = useState('');
+  const [phone, setPhone] = useState('');
+  const [personStatus, setPersonStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
   // E-post state
   const [email, setEmail] = useState('');
   const [emailStatus, setEmailStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
   // Lösenord state
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -28,6 +32,8 @@ export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifte
   useEffect(() => {
     if (profile) {
       setName(profile.full_name || '');
+      setTitle(profile.title || '');
+      setPhone(profile.phone || '');
     }
   }, [profile]);
 
@@ -37,30 +43,47 @@ export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifte
     }
   }, [user]);
 
-  const hasNameChanged = name !== (profile?.full_name || '');
+  const hasPersonChanged = name !== (profile?.full_name || '') || title !== (profile?.title || '') || phone !== (profile?.phone || '');
   const hasEmailChanged = email !== (user?.email || '');
   
   const isPasswordValid = password.length >= 8 && password === confirmPassword;
   const hasPasswordInput = password.length > 0 || confirmPassword.length > 0;
 
-  const handleSaveName = async () => {
+  const getInitials = () => {
+    if (profile?.full_name) {
+      const parts = profile.full_name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      } else if (parts.length === 1 && parts[0]) {
+        return parts[0][0].toUpperCase();
+      }
+    }
+    if (user?.email) {
+      return user.email[0].toUpperCase();
+    }
+    return '?';
+  };
+
+  const handleSavePerson = async () => {
     if (!user) return;
-    setNameStatus('saving');
+    setPersonStatus('saving');
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .update({ full_name: name })
-        .eq('id', user.id);
+        .update({ full_name: name, title, phone })
+        .eq('id', user.id)
+        .select();
       
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Saknar behörighet att uppdatera profilen (RLS).');
       
       await refreshProfile();
-      setNameStatus('saved');
-      setTimeout(() => setNameStatus('idle'), 3000);
+      setPersonStatus('saved');
+      setTimeout(() => setPersonStatus('idle'), 3000);
     } catch (err) {
-      console.error(err);
-      setNameStatus('error');
-      setTimeout(() => setNameStatus('idle'), 3000);
+      // warning removed
+      setPersonStatus('error');
+      setTimeout(() => setPersonStatus('idle'), 3000);
     }
   };
 
@@ -74,7 +97,7 @@ export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifte
       setEmailStatus('saved');
       setTimeout(() => setEmailStatus('idle'), 5000); // Längre tid så användaren hinner läsa
     } catch (err) {
-      console.error(err);
+      // warning removed
       setEmailStatus('error');
       setTimeout(() => setEmailStatus('idle'), 3000);
     }
@@ -85,15 +108,26 @@ export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifte
     setPasswordStatus('saving');
     setPasswordErrorMsg('');
     try {
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user.email!, password: currentPassword,
+      });
+
+      if (reauthError) {
+        setPasswordErrorMsg('Fel nuvarande lösenord.');
+        setPasswordStatus('error');
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
       
       setPasswordStatus('saved');
+      setCurrentPassword('');
       setPassword('');
       setConfirmPassword('');
       setTimeout(() => setPasswordStatus('idle'), 3000);
     } catch (err: any) {
-      console.error(err);
+      // warning removed
       setPasswordErrorMsg(err.message || 'Ett fel inträffade');
       setPasswordStatus('error');
     }
@@ -116,62 +150,96 @@ export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifte
 
       <div className="flex flex-col gap-8 pb-16">
         {/* Namn-sektion */}
-        <div className="bg-surface rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <div className="mb-4">
+        <div className="card">
+          <div className="card-header">
             <h3 className="text-lg font-semibold text-on-surface">Personuppgifter</h3>
             <p className="text-sm text-on-surface-variant mt-1">
               Ditt fullständiga namn och din roll.
             </p>
           </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-on-surface mb-1">
-                Fullständigt namn
-              </label>
-              <Input 
-                value={name} 
-                onChange={(e) => setName(e.target.value)} 
-                placeholder="För- och efternamn"
-              />
+           <div className="p-6 space-y-4">
+            <div className="flex items-center gap-4 pb-4 border-b border-outline-variant mb-4">
+              <div className="w-11 h-11 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-lg font-bold shrink-0">
+                {getInitials()}
+              </div>
+              <div>
+                <div className="font-bold text-on-surface">
+                  {profile.full_name || 'Namnlös'}
+                </div>
+                <div className="text-sm text-on-surface-variant">
+                  {user.email || ''}
+                </div>
+              </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-on-surface mb-1">
-                Roll
-              </label>
-              <Input 
-                value={profile.role === 'admin' ? 'Administratör' : 'Användare'} 
-                disabled 
-                className="bg-surface-container-low text-on-surface-variant cursor-not-allowed"
-              />
-              <p className="text-xs text-on-surface-variant mt-1">Rollen hanteras av administratör.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-1">
+                  Fullständigt namn
+                </label>
+                <Input 
+                  value={name} 
+                  onChange={(e) => setName(e.target.value)} 
+                  placeholder="För- och efternamn"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-1">
+                  Telefon
+                </label>
+                <Input 
+                  type="tel"
+                  value={phone} 
+                  onChange={(e) => setPhone(e.target.value)} 
+                  placeholder="070-123 45 67"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-1">
+                  Befattning
+                </label>
+                <Input 
+                  value={title} 
+                  onChange={(e) => setTitle(e.target.value)} 
+                  placeholder="t.ex. Kalkylator"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-1">
+                  Roll
+                </label>
+                <Input 
+                  value={profile.role === 'admin' ? 'Administratör' : profile.role === 'manager' ? 'Projektledare' : profile.role === 'viewer' ? 'Läsbehörighet' : 'Användare'} 
+                  disabled 
+                  className="bg-surface-container-low text-on-surface-variant cursor-not-allowed"
+                />
+                <p className="text-xs text-on-surface-variant mt-1">Rollen hanteras av administratör.</p>
+              </div>
             </div>
 
             <div className="pt-2 flex items-center justify-end gap-3">
-              {nameStatus === 'saved' && <span className="text-sm font-medium text-status-success animate-fade-in">Sparat</span>}
-              {nameStatus === 'error' && <span className="text-sm font-medium text-status-error animate-fade-in">Kunde inte spara</span>}
+              {personStatus === 'saved' && <span className="text-sm font-medium text-status-success animate-fade-in">Sparat</span>}
+              {personStatus === 'error' && <span className="text-sm font-medium text-status-error animate-fade-in">Kunde inte spara</span>}
               <Button 
-                onClick={handleSaveName} 
-                disabled={!hasNameChanged || nameStatus === 'saving'}
+                onClick={handleSavePerson} 
+                disabled={!hasPersonChanged || personStatus === 'saving'}
                 className="motion-reduce:transition-none"
               >
-                {nameStatus === 'saving' ? 'Sparar...' : 'Spara ändringar'}
+                {personStatus === 'saving' ? 'Sparar...' : 'Spara ändringar'}
               </Button>
             </div>
           </div>
         </div>
 
         {/* E-post-sektion */}
-        <div className="bg-surface rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <div className="mb-4">
+        <div className="card">
+          <div className="card-header">
             <h3 className="text-lg font-semibold text-on-surface">E-postadress</h3>
             <p className="text-sm text-on-surface-variant mt-1">
               Din inloggningsadress och kontaktmejl.
             </p>
           </div>
           
-          <div className="space-y-4">
+          <div className="p-6 space-y-4">
             <div>
               <label className="block text-sm font-medium text-on-surface mb-1">
                 Nuvarande / Ny E-post
@@ -204,15 +272,26 @@ export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifte
         </div>
 
         {/* Lösenord-sektion */}
-        <div className="bg-surface rounded-2xl border border-outline-variant p-6 shadow-sm">
-          <div className="mb-4">
+        <div className="card">
+          <div className="card-header">
             <h3 className="text-lg font-semibold text-on-surface">Lösenord</h3>
             <p className="text-sm text-on-surface-variant mt-1">
               Uppdatera ditt lösenord (minst 8 tecken).
             </p>
           </div>
           
-          <div className="space-y-4">
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-on-surface mb-1">
+                Nuvarande lösenord
+              </label>
+              <Input 
+                type="password"
+                value={currentPassword} 
+                onChange={(e) => setCurrentPassword(e.target.value)} 
+                placeholder="••••••••"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-on-surface mb-1">
                 Nytt lösenord
@@ -250,10 +329,80 @@ export function MinaUppgifterTab({ user, profile, refreshProfile }: MinaUppgifte
               {passwordStatus === 'error' && <span className="text-sm font-medium text-status-error animate-fade-in">{passwordErrorMsg || 'Kunde inte byta lösenord'}</span>}
               <Button 
                 onClick={handleSavePassword} 
-                disabled={!isPasswordValid || passwordStatus === 'saving'}
+                disabled={!isPasswordValid || passwordStatus === 'saving' || currentPassword.length === 0}
                 className="motion-reduce:transition-none"
               >
                 {passwordStatus === 'saving' ? 'Sparar...' : 'Byt lösenord'}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Konto-sektion */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-lg font-semibold text-on-surface">Konto</h3>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Din behörighet och inloggningshistorik.
+            </p>
+          </div>
+          
+          <div className="p-6 space-y-6">
+            <div className="flex items-center justify-between pb-6 border-b border-outline-variant">
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-on-surface mb-1">
+                  <Building2 size={16} className="text-on-surface-variant" />
+                  Företag
+                </label>
+                <p className="text-xs text-on-surface-variant mt-1">Hanteras av administratör.</p>
+              </div>
+              <div className="text-sm font-medium text-on-surface">
+                {profile?.company_name || '–'}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-2">
+                  Roll / Behörighet
+                </label>
+                <div>
+                  <Badge variant={profile?.role === 'admin' ? 'purple' : profile?.role === 'manager' ? 'blue' : 'gray'}>
+                    {profile?.role === 'admin' ? 'Administratör' : 
+                     profile?.role === 'manager' ? 'Projektledare' : 
+                     profile?.role === 'viewer' ? 'Läsbehörighet' : 'Användare'}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-2">
+                  Medlem sedan
+                </label>
+                <p className="text-sm text-on-surface-variant">
+                  {user?.created_at ? new Date(user.created_at).toLocaleDateString('sv-SE') : '–'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-2">
+                  Senast inloggad
+                </label>
+                <p className="text-sm text-on-surface-variant">
+                  {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('sv-SE') : '–'}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-6 mt-2 border-t border-outline-variant flex justify-end">
+              <Button 
+                variant="danger" 
+                icon="logout"
+                onClick={async () => {
+                  await logout();
+                }}
+              >
+                Logga ut
               </Button>
             </div>
           </div>

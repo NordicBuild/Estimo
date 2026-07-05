@@ -35,13 +35,13 @@ export async function listOfferter(projectId: string): Promise<DbOffert[]> {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.warn('Could not fetch offerter:', error);
+      // warning removed
       return [];
     }
 
     return (data || []) as DbOffert[];
   } catch (err) {
-    console.warn('Could not fetch offerter (catch):', err);
+    // warning removed
     return [];
   }
 }
@@ -69,7 +69,7 @@ export async function saveOffert(offert: DbOffert): Promise<void> {
     });
 
   if (error) {
-    console.error('Error saving offert:', error);
+    // warning removed
     throw error;
   }
 }
@@ -81,7 +81,7 @@ export async function deleteOffert(id: string): Promise<void> {
     .eq('id', id);
 
   if (error) {
-    console.error('Error deleting offert:', error);
+    // warning removed
     throw error;
   }
 }
@@ -93,7 +93,7 @@ export async function setStatus(id: string, status: string): Promise<void> {
     .eq('id', id);
 
   if (error) {
-    console.error('Error updating offert status:', error);
+    // warning removed
     throw error;
   }
 }

@@ -21,6 +21,6 @@ export async function logEvent(event: string, meta: object = {}) {
       meta
     });
   } catch (error) {
-    console.error("Failed to log audit event", error);
+    // warning removed
   }
 }

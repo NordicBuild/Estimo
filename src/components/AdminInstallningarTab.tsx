@@ -38,7 +38,7 @@ export function AdminInstallningarTab({ userSettings = INITIAL_USER_SETTINGS, se
         setDefaultMargin(Number(data.default_margin));
       }
     } catch (e: any) {
-      console.error("Fel vid hämtning av platform_settings", e);
+      // warning removed
     } finally {
       setLoading(false);
     }
@@ -61,7 +61,7 @@ export function AdminInstallningarTab({ userSettings = INITIAL_USER_SETTINGS, se
       setNotification({ message: "Plattformsinställningar sparade", type: 'success' });
       setTimeout(() => setNotification(null), 3000);
     } catch (e: any) {
-      console.error("Fel vid sparning av platform_settings", e);
+      // warning removed
       setNotification({ message: "Kunde inte spara inställningar", type: 'error' });
     } finally {
       setSaving(false);

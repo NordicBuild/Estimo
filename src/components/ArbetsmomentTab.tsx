@@ -113,7 +113,7 @@ export function ArbetsmomentTab({ arbetsData, customCategories = [], updateArbet
            if (showNotification) showNotification(`${newArbeten.length} arbetsmoment importerades framgångsrikt.`, 'success');
         }
       } catch (err) {
-         console.error(err);
+         // warning removed
          if (showNotification) showNotification("Ett fel uppstod vid inläsning av Excel-filen.", 'error');
       }
       if (fileInputRef.current) {

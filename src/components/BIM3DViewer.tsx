@@ -87,7 +87,7 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
         sceneRef.current = scene;
         setError(null);
       } catch (err: any) {
-        console.error("Failed to initialize BIMScene:", err);
+        // warning removed
         setError("WebGL is not supported or failed to initialize.");
       }
 
@@ -131,7 +131,7 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
           }
         } catch (err: any) {
           if (!isCancelled) {
-            console.error("Failed to load model:", err);
+            // warning removed
             setError(`Failed to load model: ${err.message || 'Unknown error'}`);
             setLoading(false);
           }

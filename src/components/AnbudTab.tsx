@@ -14,6 +14,7 @@ interface Props {
 
 export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, materials, updateByggdelOfferPrice }: Props) {
   const formatKr = (v: number) => Math.round(v).toLocaleString('sv-SE') + ' kr';
+  const vat = projectInfo.vatRate ?? 0.25;
 
   const activeByggdelar = byggdelar.filter(b => b.active !== false);
 
@@ -193,12 +194,12 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, mate
                 <span className="font-mono">{formatKr(calcResult.anbud)}</span>
               </div>
               <div className="flex justify-between text-sm text-[var(--text3)]">
-                <span>Moms (25%):</span>
-                <span className="font-mono">{formatKr(calcResult.anbud * 0.25)}</span>
+                <span>Moms ({Math.round(vat * 100)}%):</span>
+                <span className="font-mono">{formatKr(calcResult.anbud * vat)}</span>
               </div>
               <div className="flex justify-between font-extrabold text-xl pt-3 mt-2 border-t-2 border-[var(--border)] text-[var(--blue-dk)]">
                 <span>Total inkl. moms:</span>
-                <span className="font-mono">{formatKr(calcResult.anbud * 1.25)}</span>
+                <span className="font-mono">{formatKr(calcResult.anbud * (1 + vat))}</span>
               </div>
             </div>
           </div>

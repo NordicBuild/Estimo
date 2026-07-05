@@ -55,7 +55,7 @@ export function NyOffertModal({ isOpen, onClose, onSave, referensLista }: Props)
       });
       onClose();
     } catch (error) {
-      console.error(error);
+      // warning removed
     } finally {
       setSaving(false);
     }

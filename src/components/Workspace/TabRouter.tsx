@@ -2,21 +2,19 @@ import React, { Suspense, lazy } from 'react';
 import { KalkylTab } from '../KalkylTab';
 import { ArbetsmomentTab } from '../ArbetsmomentTab';
 import { AnbudTab } from '../AnbudTab';
-
-const HemsidaTab = lazy(() => import('../HemsidaTab').then(m => ({ default: m.HemsidaTab })));
-const ProjektInfoTab = lazy(() => import('../ProjektInfoTab').then(m => ({ default: m.ProjektInfoTab })));
-const SammanstallnTab = lazy(() => import('../SammanstallnTab').then(m => ({ default: m.SammanstallnTab })));
-const PlaneringTab = lazy(() => import('../PlaneringTab').then(m => ({ default: m.PlaneringTab })));
-const SlutsidaTab = lazy(() => import('../SlutsidaTab').then(m => ({ default: m.SlutsidaTab })));
-const InkopTab = lazy(() => import('../InkopTab').then(m => ({ default: m.InkopTab })));
-const PrognosTab = lazy(() => import('../PrognosTab').then(m => ({ default: m.PrognosTab })));
-const ReceptbibliotekTab = lazy(() => import('../ReceptbibliotekTab').then(m => ({ default: m.ReceptbibliotekTab })));
-const MinaUppgifterTab = lazy(() => import('../MinaUppgifterTab').then(m => ({ default: m.MinaUppgifterTab })));
-
-const PdfMeasurementTab = lazy(() => import('../PdfMeasurementTab').then(m => ({ default: m.PdfMeasurementTab })));
-const BIMMeasurementTab = lazy(() => import('../BIMMeasurementTab').then(m => ({ default: m.BIMMeasurementTab })));
-const AnalysTab = lazy(() => import('../AnalysTab').then(m => ({ default: m.AnalysTab })));
-const MaterialTab = lazy(() => import('../MaterialTab').then(m => ({ default: m.MaterialTab })));
+import { HemsidaTab } from '../HemsidaTab';
+import { ProjektInfoTab } from '../ProjektInfoTab';
+import { SammanstallnTab } from '../SammanstallnTab';
+import { PlaneringTab } from '../PlaneringTab';
+import { SlutsidaTab } from '../SlutsidaTab';
+import { InkopTab } from '../InkopTab';
+import { PrognosTab } from '../PrognosTab';
+import { ReceptbibliotekTab } from '../ReceptbibliotekTab';
+import { MinaUppgifterTab } from '../MinaUppgifterTab';
+import { PdfMeasurementTab } from '../PdfMeasurementTab';
+import { BIMMeasurementTab } from '../BIMMeasurementTab';
+import { AnalysTab } from '../AnalysTab';
+import { MaterialTab } from '../MaterialTab';
 
 const FallbackSpinner = () => (
   <div className="flex-1 flex items-center justify-center p-8">

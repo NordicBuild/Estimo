@@ -259,7 +259,7 @@ export class BIMScene {
         
         resolve(elements);
       }, undefined, (err) => {
-        console.warn("Failed to load GLB, generating mock scene instead.", err);
+        // warning removed
         const mockElements = this.generateMockScene();
         this.frameAll();
         resolve(mockElements);

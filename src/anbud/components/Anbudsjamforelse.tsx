@@ -20,7 +20,7 @@ export function Anbudsjamforelse({ projectId, referensLista, onApplyOffert }: Pr
       const data = await listOfferter(projectId);
       setOfferter(data);
     } catch (err) {
-      console.error(err);
+      // warning removed
     } finally {
       setLoading(false);
     }

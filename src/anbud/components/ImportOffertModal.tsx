@@ -124,7 +124,7 @@ export function ImportOffertModal({ isOpen, onClose, onSave, referensLista }: Pr
       });
       onClose();
     } catch (error) {
-      console.error(error);
+      // warning removed
     } finally {
       setSaving(false);
     }

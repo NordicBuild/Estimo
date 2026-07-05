@@ -6,7 +6,8 @@ import { PageScales, scaleForPage, setPageScale, serializePageScales, deserializ
 import { Scale, deriveScale, toRealDistance, toRealArea, presetScale, ratioFromScale, toMeters } from "../pdf/scaleHelpers";
 
 // Use CDN for worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 import { Measurement, MeasurementGroup, Point } from "../measurementTypes";
 
@@ -276,7 +277,7 @@ export function PdfMeasurementTab({
       setMeasurements([]);
       setCurrentPoints([]);
     } catch (err) {
-      console.error("Error loading PDF", err);
+      // warning removed
       alert("Kunde inte ladda PDFen");
     }
   };

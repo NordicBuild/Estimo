@@ -399,7 +399,7 @@ export default function App() {
       try {
         const { error } = await supabase.from('app_state').upsert({ id: `materials_${dataSpaceId}`, company_id: dataSpaceId, data: newMats });
         if (error) {
-          console.warn("pushMaterials error:", error);
+          // warning removed
           showNotification("Fel vid databassparning (Material), sparat lokalt. " + error.message, "error");
         }
       } catch(e) {}
@@ -413,7 +413,7 @@ export default function App() {
       try {
         const { error } = await supabase.from('app_state').upsert({ id: `arbetsmoments_${dataSpaceId}`, company_id: dataSpaceId, data: newArbs });
         if (error) {
-          console.warn("pushArbetsData error:", error);
+          // warning removed
           showNotification("Fel vid databassparning (Arbetsmoment), sparat lokalt. " + error.message, "error");
         }
       } catch(e) {}
@@ -494,7 +494,7 @@ export default function App() {
     setCustomCategories(prev => {
       const newCats = prev.includes(cat) ? prev : [...prev, cat];
       if (user && dataSpaceId) {
-        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats });
+        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats }).then(() => {});
       }
       return newCats;
     });
@@ -504,7 +504,7 @@ export default function App() {
     setCustomCategories(cats => {
       const newCats = cats.map(c => c === oldCat ? newCat : c);
       if (user && dataSpaceId) {
-        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats });
+        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats }).then(() => {});
       }
       return newCats;
     });
@@ -514,7 +514,7 @@ export default function App() {
     setCustomCategories(cats => {
       const newCats = cats.filter(c => c !== cat);
       if (user && dataSpaceId) {
-        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats });
+        supabase.from('app_state').upsert({ id: `custom_categories_${dataSpaceId}`, company_id: dataSpaceId, data: newCats }).then(() => {});
       }
       return newCats;
     });
@@ -601,7 +601,7 @@ export default function App() {
           setByggdelar(prev => [...prev, ...importedByggdelar]);
         }
       } catch (err) {
-        console.error("Error reading file:", err);
+        // warning removed
       }
       if (e.target) e.target.value = '';
     };
@@ -676,6 +676,8 @@ export default function App() {
        };
     });
 
+    const vat = projectInfo.vatRate ?? 0.25;
+
     // 4. Slutsida (Sammanställning)
     const summaryRows = [
       { 'Beskrivning': 'Totalt Materialkostnad', 'Belopp (kr)': Math.round(calcResult.totMat) },
@@ -688,8 +690,8 @@ export default function App() {
       { 'Beskrivning': 'Vinst/Risk UE', 'Belopp (kr)': 0 },
       { 'Beskrivning': 'Vinst/Risk Totalt', 'Belopp (kr)': Math.round(calcResult.vTot) },
       { 'Beskrivning': 'Anbud (exkl moms)', 'Belopp (kr)': Math.round(calcResult.anbud) },
-      { 'Beskrivning': 'Moms', 'Belopp (kr)': Math.round(calcResult.anbud * 0.25) },
-      { 'Beskrivning': 'Anbud (inkl moms)', 'Belopp (kr)': Math.round(calcResult.anbud * 1.25) }
+      { 'Beskrivning': 'Moms', 'Belopp (kr)': Math.round(calcResult.anbud * vat) },
+      { 'Beskrivning': 'Anbud (inkl moms)', 'Belopp (kr)': Math.round(calcResult.anbud * (1 + vat)) }
     ];
 
     // 5. Kundanbud
@@ -714,7 +716,6 @@ export default function App() {
           const partAnbudPrice = partCalc.costNetto + (calcResult.omkTot * ratio) + (calcResult.vTot * ratio);
           priceStr = `${Math.round(partAnbudPrice).toLocaleString('sv-SE')} kr`;
        }
-
        if (priceStr) {
           clientOfferRows.push({ 'Rubrik': p.name, 'Information': `${p.qty} ${partCalc?.unit || 'st'}`, 'Pris': priceStr });
        } else {
@@ -725,8 +726,8 @@ export default function App() {
     clientOfferRows.push(
       { 'Rubrik': '' },
       { 'Rubrik': 'Pris exkl. moms', 'Information': `${Math.round(calcResult.anbud).toLocaleString('sv-SE')} kr` },
-      { 'Rubrik': 'Moms', 'Information': `${Math.round(calcResult.anbud * 0.25).toLocaleString('sv-SE')} kr` },
-      { 'Rubrik': 'Pris inkl. moms', 'Information': `${Math.round(calcResult.anbud * 1.25).toLocaleString('sv-SE')} kr` },
+      { 'Rubrik': 'Moms', 'Information': `${Math.round(calcResult.anbud * vat).toLocaleString('sv-SE')} kr` },
+      { 'Rubrik': 'Pris inkl. moms', 'Information': `${Math.round(calcResult.anbud * (1 + vat)).toLocaleString('sv-SE')} kr` }
     );
 
     const wb = XLSX.utils.book_new();
@@ -1105,7 +1106,7 @@ export default function App() {
       URL.revokeObjectURL(url);
       showNotification("Data exporterades framgångsrikt!", 'success');
     } catch (err) {
-      console.error(err);
+      // warning removed
       showNotification("Ett fel inträffade vid export av filen.", 'error');
     }
   };
@@ -1304,6 +1305,16 @@ export default function App() {
             >
               Tillbaka till Kalkylportal
             </button>
+            <pre style={{textAlign:'left',fontSize:12,background:'#f3f4f6',padding:12,
+              borderRadius:8,marginTop:16,overflowX:'auto'}}>
+              {JSON.stringify({
+                email: user?.email ?? null,
+                role: profile?.role ?? null,
+                is_platform_admin: profile?.is_platform_admin ?? null,
+                isPlatformAdmin: isPlatformAdmin ?? null,
+                appMode
+              }, null, 2)}
+            </pre>
           </div>
         </div>
       );
@@ -1444,7 +1455,7 @@ export default function App() {
           <div className="fixed inset-0 bg-black/50 z-40 lg:hidden print:hidden" onClick={() => setSidebarOpen(false)}></div>
         )}
 
-        <WorkspaceNav activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} isAdmin={isAdmin} />
+        <WorkspaceNav activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} isPlatformAdmin={isPlatformAdmin} />
 
         <div className="flex-1 flex flex-col min-w-0">
           <WorkspaceActions

@@ -144,7 +144,7 @@ export function AdminTab({
         setInvoices(defaultInvoices);
       }
     } catch (err: any) {
-      console.error(err);
+      // warning removed
     } finally {
       setLoadingInvoices(false);
     }
@@ -162,7 +162,7 @@ export function AdminTab({
         if (error) throw error;
       }
     } catch (err) {
-      console.error("Fel vid sparande av fakturor", err);
+      // warning removed
       setDbError(true);
     }
   };
@@ -205,7 +205,7 @@ export function AdminTab({
         setCompanyProjects([]);
       }
     } catch (err: any) {
-      console.error("Fel vid hämtning av företagsdata:", err);
+      // warning removed
     } finally {
       setLoadingCompanyData(false);
     }
@@ -237,7 +237,7 @@ export function AdminTab({
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error(error);
+      // warning removed
       showNotification("Kunde inte skapa backup", "error");
     }
   };
@@ -272,7 +272,7 @@ export function AdminTab({
       }
       setGlobalStats({ totalProjects: projCount, totalDataSources: dsCount });
     } catch (err) {
-      console.error(err);
+      // warning removed
     } finally {
       setLoadingGlobalStats(false);
     }
@@ -297,7 +297,7 @@ export function AdminTab({
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error(error);
+      // warning removed
       showNotification("Kunde inte skapa system-backup", "error");
     }
   };
@@ -397,7 +397,7 @@ export function AdminTab({
         })));
       }
     } catch (err) {
-      console.error(err);
+      // warning removed
       showNotification("Använder lokal lagring (" + (err as any).message + ")", "error");
     } finally {
       setLoading(false);
@@ -431,7 +431,7 @@ export function AdminTab({
         .single();
       
       if (subError) {
-        console.error("Kunde inte skapa prenumeration:", subError);
+        // warning removed
       }
       
       setCompanies([...companies, {
@@ -449,7 +449,7 @@ export function AdminTab({
       setNewCompany({ name: "", orgNr: "" });
       showNotification("Företag tillagt.", "success");
     } catch (err) {
-      console.error(err);
+      // warning removed
       showNotification(
         "Ett fel uppstod när företaget skulle läggas till.",
         "error",
@@ -489,7 +489,7 @@ export function AdminTab({
       setNewUser({ ...newUser, email: "" });
       loadAdminData();
     } catch (err: any) {
-      console.error(err);
+      // warning removed
       showNotification(
         "Kunde inte skapa användaren: " + (err.message || "Okänt fel"),
         "error"
@@ -504,7 +504,7 @@ export function AdminTab({
       setCompanies(companies.filter((c) => c.id !== id));
       showNotification("Företag borttaget.", "success");
     } catch (err: any) {
-      console.error(err);
+      // warning removed
       showNotification(
         "Kunde inte ta bort företaget: " + (err.message || "Okänt fel"),
         "error",
@@ -525,7 +525,7 @@ export function AdminTab({
 
       showNotification("Användare borttagen.", "success");
     } catch (err: any) {
-      console.error(err);
+      // warning removed
       loadAdminData();
       showNotification(
         "Kunde inte ta bort användaren: " + (err.message || "Okänt fel"),
@@ -549,7 +549,7 @@ export function AdminTab({
       setEditingUser(null);
       showNotification("Användare uppdaterad.", "success");
     } catch (err: any) {
-      console.error(err);
+      // warning removed
       showNotification(
         "Kunde inte uppdatera användaren: " + (err.message || "Okänt fel"),
         "error",
@@ -573,7 +573,7 @@ export function AdminTab({
       setEditingCompany(null);
       showNotification("Företag uppdaterat.", "success");
     } catch (err: any) {
-      console.error(err);
+      // warning removed
       showNotification(
         "Kunde inte uppdatera företaget: " + (err.message || "Okänt fel"),
         "error",
@@ -621,7 +621,7 @@ export function AdminTab({
 
       showNotification("Prenumeration uppdaterad.", "success");
     } catch (err) {
-      console.error(err);
+      // warning removed
       showNotification("Kunde inte uppdatera prenumerationen.", "error");
     }
   };

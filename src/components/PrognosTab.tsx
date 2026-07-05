@@ -28,7 +28,7 @@ export function PrognosTab({ byggdelar, calcResult, projectId, companyId }: Prop
         map[d.line_key] = d;
       });
       setUtfall(map);
-    }).catch(console.error).finally(() => setLoading(false));
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [companyId, projectId]);
 
   const { budgetPoster, totals } = useMemo(() => {

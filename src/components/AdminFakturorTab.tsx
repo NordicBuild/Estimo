@@ -101,7 +101,7 @@ export function AdminFakturorTab() {
         setInvoices(merged);
       }
     } catch (err) {
-      console.error("Kunde inte ladda fakturor", err);
+      // warning removed
     }
     setLoading(false);
   };
@@ -226,7 +226,7 @@ export function AdminFakturorTab() {
       setShowModal(false);
       loadData();
     } catch (err: any) {
-      console.error(err);
+      // warning removed
       alert("Fel vid sparande: " + (err.message || "Okänt fel"));
     }
   };

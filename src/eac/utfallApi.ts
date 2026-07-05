@@ -20,13 +20,13 @@ export async function listUtfall(companyId: string, projectId: string): Promise<
       .eq('project_id', projectId);
 
     if (error) {
-      console.warn('Could not fetch utfall:', error);
+      // warning removed
       return [];
     }
 
     return (data || []) as DbUtfall[];
   } catch (err) {
-    console.warn('Could not fetch utfall (catch):', err);
+    // warning removed
     return [];
   }
 }
@@ -47,7 +47,7 @@ export async function saveUtfall(utfall: DbUtfall): Promise<void> {
     .upsert(payload, { onConflict: 'project_id,line_key' });
 
   if (error) {
-    console.error('Error saving utfall:', error);
+    // warning removed
     throw error;
   }
 }

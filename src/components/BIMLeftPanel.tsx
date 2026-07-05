@@ -119,7 +119,7 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
       });
 
       if (funcError) {
-         console.warn("[BIM] Parse function returned error:", funcError);
+         // warning removed
          throw new Error(`Edge Function misslyckades: ${funcError.message || JSON.stringify(funcError)} (Se till att funktionen 'bim-process' är deployad i Supabase)`);
       }
 
@@ -134,7 +134,7 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
       await setActiveModel(modelId);
 
     } catch (err: any) {
-      console.error("[BIM] Error uploading/parsing IFC:", err);
+      // warning removed
       setError(err.message || "Failed to process IFC file.");
     } finally {
       setLoading(false);

@@ -20,7 +20,7 @@ export function ReceptbibliotekTab({ companyId }: Props) {
       const data = await listRecept(companyId);
       setReceptList(data);
     } catch (err) {
-      console.error(err);
+      // warning removed
     } finally {
       setLoading(false);
     }
@@ -200,7 +200,7 @@ function ReceptModal({ isOpen, onClose, initialData, onSave }: ReceptModalProps)
     try {
       await onSave(dbRecept);
     } catch (err) {
-      console.error(err);
+      // warning removed
     } finally {
       setSaving(false);
     }

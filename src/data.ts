@@ -27,6 +27,15 @@ export interface SavedProject {
   activityLogs?: ActivityLog[];
 }
 
+export type Milestone = {
+  id: string;
+  name: string;
+  plannedDate?: string;
+  actualDate?: string;
+  paymentPct?: number;   // andel av kontraktssumman, i procent (25 = 25 %)
+  status?: 'planerad' | 'uppnadd' | 'fakturerad' | 'betald';
+};
+
 export type ProjectInfo = {
   nr: string;
   name: string;
@@ -42,6 +51,14 @@ export type ProjectInfo = {
   contractType?: 'AB04' | 'ABT06' | string;
   startDate?: string;
   endDate?: string;
+  actualStartDate?: string;
+  actualEndDate?: string;
+  phase?: string;
+  projectType?: string;
+  contractValue?: number;
+  contingencyPct?: number;
+  vatRate?: number;
+  milestones?: Milestone[];
   notes?: string;
   bta?: number;
   variables?: Record<string, number>;
@@ -83,6 +100,7 @@ export const INITIAL_PROJECT_INFO: ProjectInfo = {
   land: 'Sverige',
   startDate: '',
   endDate: '',
+  vatRate: 0.25,
   variables: {}
 };
 

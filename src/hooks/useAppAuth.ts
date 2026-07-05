@@ -6,9 +6,13 @@ import { logEvent } from '../lib/audit';
 export interface AppProfile {
   id: string;
   full_name: string | null;
+  phone: string | null;
+  title: string | null;
   role: 'admin' | 'manager' | 'user' | 'viewer' | null;
   company_id: string | null;
-  is_platform_admin?: boolean;
+  company_name: string | null;
+  is_platform_admin: boolean;
+  email?: string | null;
 }
 
 export function useAppAuth(
@@ -35,37 +39,37 @@ export function useAppAuth(
     try {
       let { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, company_id, is_platform_admin')
+        .select('id, full_name, phone, title, role, company_id, is_platform_admin, email, companies(name, org_nr)')
         .eq('id', sessionUser.id)
         .maybeSingle();
-        
-      // Fallback if is_platform_admin column doesn't exist yet
-      if (error && error.message.includes('is_platform_admin')) {
-        const fallback = await supabase
-          .from('profiles')
-          .select('id, full_name, role, company_id')
-          .eq('id', sessionUser.id)
-          .maybeSingle();
-        data = fallback.data ? { ...fallback.data, is_platform_admin: false } as any : null;
-        error = fallback.error;
-      }
       
       if (error) {
-        console.error('profiles fetch', error);
+        // warning removed
         setProfileError(error.message);
       } else if (!data) {
         setProfileError('Ingen profilrad hittades för användaren');
       }
       
       if (data) {
-        setProfile(data as AppProfile);
+        if (data.email !== sessionUser.email) {
+          try {
+            await supabase.from('profiles').update({ email: sessionUser.email }).eq('id', sessionUser.id);
+          } catch (updateErr) {
+            console.error('Kunde inte synka e-post till profiles', updateErr);
+          }
+          data.email = sessionUser.email;
+        }
+        setProfile({
+          ...(data as any),
+          company_name: (data as any).companies?.name ?? null,
+        } as AppProfile);
         setProfileError(null);
         // Låt App.tsx hantera behörighetskontroll, tvinga inte appMode här
       } else {
         setProfile(null);
       }
     } catch (e: any) {
-      console.error('profiles fetch', e);
+      // warning removed
       setProfileError(e.message || 'Ett okänt fel inträffade vid hämtning av profil');
       setProfile(null);
     } finally {
@@ -74,8 +78,10 @@ export function useAppAuth(
   };
 
   const refreshProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    await fetchProfileForUser(session?.user ?? null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetchProfileForUser(session?.user ?? null);
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -86,7 +92,7 @@ export function useAppAuth(
         setAuthInitialized(true);
       });
     }).catch(err => {
-      console.error("Failed to get session", err);
+      // warning removed
       setAuthInitialized(true);
     });
 
@@ -116,7 +122,7 @@ export function useAppAuth(
             setAuthInitialized(true);
           });
         }).catch(err => {
-          console.error("Failed to get session on oauth success", err);
+          // warning removed
         });
       }
     };

@@ -24,16 +24,22 @@ export class OpenLcaClient {
   }
 
   private async call(method: string, params: any = {}): Promise<any> {
-    const res = await fetch(this.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method,
-        params
-      })
-    });
+    let res: Response;
+    try {
+      res = await fetch(this.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method,
+          params
+        })
+      });
+    } catch (err: any) {
+      // warning removed
+      throw new Error(`Kunde inte ansluta till OpenLCA på ${this.url}`);
+    }
     if (!res.ok) {
       throw new Error(`OpenLCA HTTP error: ${res.status} ${res.statusText}`);
     }

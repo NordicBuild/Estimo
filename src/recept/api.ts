@@ -31,13 +31,13 @@ export async function listRecept(companyId: string): Promise<DbRecept[]> {
       .order('namn', { ascending: true });
 
     if (error) {
-      console.warn('Could not fetch recept (database might not be connected):', error);
+      // warning removed
       return [];
     }
 
     return (data || []) as DbRecept[];
   } catch (err) {
-    console.warn('Could not fetch recept (catch):', err);
+    // warning removed
     return [];
   }
 }
@@ -61,7 +61,7 @@ export async function saveRecept(dbRecept: DbRecept): Promise<void> {
     });
 
   if (error) {
-    console.error('Error saving recept:', error);
+    // warning removed
     throw error;
   }
 }
@@ -73,7 +73,7 @@ export async function deleteRecept(id: string): Promise<void> {
     .eq('id', id);
 
   if (error) {
-    console.error('Error deleting recept:', error);
+    // warning removed
     throw error;
   }
 }
