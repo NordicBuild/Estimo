@@ -26,6 +26,7 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
     const elements = useBIMStore((state) => state.elements);
     const filters = useBIMStore((state) => state.filters);
     const visibleElements = useMemo(() => getVisibleElements(elements, filters), [elements, filters]);
+    const parsedMeshes = useBIMStore((state) => state.parsedMeshes);
     const selectedElementIds = useBIMStore((state) => state.selectedElementIds);
     const clipping = useBIMStore((state) => state.clipping);
     const colorMode = useBIMStore((state) => state.colorMode);
@@ -113,10 +114,10 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
         setLoading(true);
         setError(null);
         try {
-          const url = modelUrl || (modelId ? `/models/${modelId}.glb` : undefined);
+          const url = modelUrl;
           if (!url) {
             setLoading(false);
-            if (elements.length > 0) {
+            if (!parsedMeshes && elements.length > 0) {
               setError("Geometri saknas/degraderad – properties tillgängliga i sidopanelen.");
             }
             return;
@@ -145,15 +146,23 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
       };
     }, [modelId, modelUrl, elements.length]);
 
+    // Handle parsed meshes from local parsing
+    useEffect(() => {
+      if (!sceneRef.current || !parsedMeshes || parsedMeshes.length === 0) return;
+      sceneRef.current.loadParsedModel(parsedMeshes);
+      sceneRef.current.frameAll();
+    }, [parsedMeshes]);
+
     // Sync Selection
     useEffect(() => {
       if (!sceneRef.current) return;
       
       sceneRef.current.deselectAll();
       selectedElementIds.forEach(id => {
-        // Find the database element to get its ExpressID
         const dbEl = elements.find(e => e.id === id);
-        if (dbEl && dbEl.properties?.ExpressID) {
+        if (dbEl && dbEl.properties?.ExpressID !== undefined) {
+           sceneRef.current?.selectElement(String(dbEl.properties.ExpressID));
+           // fallback for older GLBs
            sceneRef.current?.selectElement(`Element_${dbEl.properties.ExpressID}`);
         } else {
            sceneRef.current?.selectElement(id);
@@ -169,9 +178,10 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
       
       elements.forEach(el => {
         const isVisible = visibleIds.has(el.id);
-        if (el.properties?.ExpressID) {
+        if (el.properties?.ExpressID !== undefined) {
+          sceneRef.current?.setElementVisibility(String(el.properties.ExpressID), isVisible);
+          // fallbacks
           sceneRef.current?.setElementVisibility(`Element_${el.properties.ExpressID}`, isVisible);
-          // also try node format if mesh was selected
           sceneRef.current?.setElementVisibility(`Mesh_${el.properties.ExpressID}`, isVisible);
         } else {
           sceneRef.current?.setElementVisibility(el.id, isVisible);

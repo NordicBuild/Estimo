@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { supabase } from '../supabase';
+import { parseIfc } from '../bim/ifc/parseIfc';
 import { useBIMStore, getVisibleElements } from '../stores/useBIMStore';
 import { Search, Box, Layers, Scissors, Filter, ChevronDown, ChevronRight, X, Square, CheckSquare, Upload, AlertCircle } from 'lucide-react';
 
@@ -26,7 +27,9 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
   const setModelName = useBIMStore((state) => state.setModelName);
   const setModelUrl = useBIMStore((state) => state.setModelUrl);
   const setElements = useBIMStore((state) => state.setElements);
+  const setParsedMeshes = useBIMStore((state) => state.setParsedMeshes);
   const setActiveModel = useBIMStore((state) => state.setActiveModel);
+  const setActiveModelLocal = useBIMStore((state) => state.setActiveModelLocal);
   const setLoading = useBIMStore((state) => state.setLoading);
   const setError = useBIMStore((state) => state.setError);
   const error = useBIMStore((state) => state.error);
@@ -39,6 +42,7 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
   const disciplines = useMemo(() => Array.from(new Set(elements.map(e => e.discipline).filter(Boolean))).sort(), [elements]);
 
   const [expandedSection, setExpandedSection] = useState<'categories' | 'storeys' | 'disciplines' | null>('categories');
+  const [pollingMsg, setPollingMsg] = useState<string | null>(null);
 
   const handleSliderChange = (axis: 'axisX' | 'axisY' | 'axisZ', idx: 0 | 1, value: number) => {
     const newAxis = [...clipping[axis]] as [number, number];
@@ -83,22 +87,43 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
 
     setLoading(true);
     setError(null);
+    setPollingMsg(null);
     try {
       const modelId = crypto.randomUUID();
       const filePath = `projects/${projectId}/bim/${modelId}/${file.name}`;
       
-      console.log(`[BIM] Uploading ${file.name} to ${filePath}...`);
+      // a) Read file and parse locally
+      setPollingMsg("Läser fil...");
+      const arrayBuffer = await file.arrayBuffer();
       
-      // 1. Upload to storage
+      setPollingMsg("Extraherar BIM-data (lokalt)...");
+      const parsedModel = await parseIfc(arrayBuffer, (pct) => {
+        setPollingMsg(`Extraherar BIM-data (${Math.round(pct)}%)...`);
+      });
+
+      setPollingMsg("Laddar 3D-vy...");
+      
+      const newElements = parsedModel.elements.map(e => ({
+        id: crypto.randomUUID(),
+        model_id: modelId,
+        guid: e.guid,
+        name: e.name,
+        category: e.category,
+        storey: e.storey,
+        discipline: e.discipline,
+        properties: e.properties,
+        created_at: new Date().toISOString()
+      }));
+
+      // c) Upload to storage
+      setPollingMsg("Sparar fil i molnet...");
       const { error: uploadError } = await supabase.storage
         .from('bim-uploads')
         .upload(filePath, file, { upsert: false });
         
       if (uploadError) throw uploadError;
 
-      console.log(`[BIM] Creating db record for model ${modelId}...`);
-
-      // 2. Create row in bim_models
+      // d) Create bim_models row
       const { error: dbError } = await supabase.from('bim_models').insert({
         id: modelId,
         company_id: companyId,
@@ -106,36 +131,95 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
         name: file.name,
         file_url: filePath,
         format: 'ifc',
-        status: 'processing'
+        status: 'ready',
+        has_geometry: false
       });
 
       if (dbError) throw dbError;
 
-      console.log(`[BIM] Invoking parse function for ${modelId}...`);
-
-      // 3. Invoke parse function
-      const { data: funcData, error: funcError } = await supabase.functions.invoke('bim-process', {
-        body: { filePath, projectId, modelId, format: 'ifc' }
-      });
-
-      if (funcError) {
-         // warning removed
-         throw new Error(`Edge Function misslyckades: ${funcError.message || JSON.stringify(funcError)} (Se till att funktionen 'bim-process' är deployad i Supabase)`);
+      // e) Batch-insert elements
+      setPollingMsg("Sparar element...");
+      for (let i = 0; i < newElements.length; i += 1000) {
+        const batch = newElements.slice(i, i + 1000);
+        const { error: batchError } = await supabase.from('bim_elements').insert(batch);
+        if (batchError) {
+          console.warn("[BIM] Element batch insert error:", batchError);
+        }
       }
 
-      // Check if function returned an error in the response body
-      if (funcData && funcData.error) {
-         throw new Error(`BIM Process Error: ${funcData.error}`);
-      }
-
-      console.log(`[BIM] Successfully parsed IFC. Loading into viewer...`);
-
+      setPollingMsg(null);
+      
       setModelName(file.name);
-      await setActiveModel(modelId);
+      
+      // Load active model locally to avoid roundtrip
+      setActiveModelLocal(modelId, newElements as any, parsedModel.meshes);
+
+      // Start background task to export and upload GLB
+      (async () => {
+        try {
+          const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+          const THREE = await import('three');
+          
+          const exportGroup = new THREE.Group();
+          for (const meshData of parsedModel.meshes) {
+            const { expressID, geometry, color } = meshData;
+            const material = new THREE.MeshStandardMaterial({
+              color: new THREE.Color(color[0], color[1], color[2]),
+              transparent: color[3] < 1,
+              opacity: color[3],
+              side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.userData = { expressID }; // Important: expressID goes into userData so GLTFExporter puts it in extras
+            exportGroup.add(mesh);
+          }
+
+          const exporter = new GLTFExporter();
+          exporter.parse(
+            exportGroup,
+            async (gltf) => {
+              try {
+                const glbBuffer = gltf as ArrayBuffer;
+                const glbPath = `projects/${projectId}/bim/${modelId}.glb`;
+                const { error: uploadGlbError } = await supabase.storage
+                  .from('bim-uploads')
+                  .upload(glbPath, glbBuffer, { 
+                    upsert: true,
+                    contentType: 'model/gltf-binary'
+                  });
+                  
+                if (uploadGlbError) {
+                  console.error('[BIM] Failed to upload GLB:', uploadGlbError);
+                  return;
+                }
+
+                // Update bim_models
+                await supabase.from('bim_models')
+                  .update({
+                    has_geometry: true,
+                    geometry_url: glbPath
+                  })
+                  .eq('id', modelId);
+                  
+                console.log('[BIM] Successfully exported and uploaded GLB in background.');
+              } catch (e) {
+                console.error('[BIM] Background GLB upload error:', e);
+              }
+            },
+            (error) => {
+              console.error('[BIM] Failed to export GLB:', error);
+            },
+            { binary: true }
+          );
+        } catch (e) {
+          console.error('[BIM] Background GLB export setup error:', e);
+        }
+      })();
 
     } catch (err: any) {
       // warning removed
       setError(err.message || "Failed to process IFC file.");
+      setPollingMsg(null);
     } finally {
       setLoading(false);
     }
@@ -162,6 +246,13 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
           <div className="mb-3 px-3 py-2 bg-red-50 text-red-600 rounded-md text-xs flex items-start gap-2 border border-red-100">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
+          </div>
+        )}
+        
+        {pollingMsg && !error && (
+          <div className="mb-3 px-3 py-2 bg-blue-50 text-blue-600 rounded-md text-xs flex items-start gap-2 border border-blue-100">
+            <Layers className="w-4 h-4 flex-shrink-0 mt-0.5 animate-pulse" />
+            <span>{pollingMsg}</span>
           </div>
         )}
 

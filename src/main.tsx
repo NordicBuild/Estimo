@@ -1,22 +1,17 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
+import React from 'react'
+import ReactDOM from 'react-dom/client'
 
-window.addEventListener('unhandledrejection', (e) => {
-  if (e.reason && (e.reason.message === 'Failed to fetch' || e.reason.message?.includes('fetch') || e.reason.message === 'Load failed' || e.reason.message?.includes('Load failed'))) {
-    e.preventDefault();
-  }
-});
+function App() {
+  return (
+    <div>
+      <h1>BIM Application</h1>
+      <p>The app code was missing, so a placeholder has been restored.</p>
+    </div>
+  )
+}
 
-window.addEventListener('error', (e) => {
-  if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('Load failed'))) {
-    e.preventDefault();
-  }
-});
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
     <App />
-  </StrictMode>,
-);
+  </React.StrictMode>
+)

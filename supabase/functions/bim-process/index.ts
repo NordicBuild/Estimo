@@ -84,8 +84,19 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  let modelId: string | undefined;
+
+  // Initialize Supabase client with Service Role to bypass RLS during background processing
+  const supabaseClient = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    { auth: { persistSession: false } }
+  );
+
   try {
-    const { filePath, projectId, modelId, format } = await req.json();
+    const body = await req.json();
+    const { filePath, projectId, format } = body;
+    modelId = body.modelId;
 
     if (!filePath || !projectId || !modelId) {
       throw new Error("Missing required parameters (filePath, projectId, modelId).");
@@ -94,13 +105,6 @@ serve(async (req) => {
     if (format && format.toLowerCase() !== 'ifc') {
       throw new Error("Unsupported format. Only 'ifc' is currently supported.");
     }
-
-    // Initialize Supabase client with Service Role to bypass RLS during background processing
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      { auth: { persistSession: false } }
-    );
 
     console.log(`[BIM] Starting processing for model ${modelId}, file: ${filePath}`);
 
@@ -217,11 +221,11 @@ serve(async (req) => {
     let skipGeometry = false;
 
     // Check size limit (40MB)
-    const MAX_SIZE = 40 * 1024 * 1024;
+    const MAX_SIZE = 15 * 1024 * 1024;
     if (fileUint8Array.length > MAX_SIZE) {
-      console.log(`[BIM] File > 40MB (${fileUint8Array.length} bytes). Skipping geometry extraction.`);
+      console.log(`[BIM] File > 15MB (${fileUint8Array.length} bytes). Skipping geometry extraction.`);
       skipGeometry = true;
-      geometryError = "File too large (>40MB). Skipped geometry.";
+      geometryError = "Filen överstiger 15 MB, 3D-geometri inaktiverad.";
     }
 
     if (!skipGeometry && !isTimedOut) {
@@ -238,12 +242,14 @@ serve(async (req) => {
             return;
           }
           
-          const expressID = mesh.expressID;
-          const node = doc.createNode(`Element_${expressID}`);
-          scene.addChild(node);
-          
-          const gltfMesh = doc.createMesh(`Mesh_${expressID}`);
-          node.setMesh(gltfMesh);
+          try {
+            const expressID = mesh.expressID;
+            const node = doc.createNode(`Element_${expressID}`);
+            node.setExtras({ expressID });
+            scene.addChild(node);
+            
+            const gltfMesh = doc.createMesh(`Mesh_${expressID}`);
+            node.setMesh(gltfMesh);
           
           const geometries = mesh.geometries;
           const size = geometries.size();
@@ -275,13 +281,13 @@ serve(async (req) => {
             
             const vertexCount = vertices.length / 6;
             const positions = new Float32Array(vertexCount * 3);
+            const normals = new Float32Array(vertexCount * 3);
             
             for (let v = 0; v < vertexCount; v++) {
               const x = vertices[v * 6];
               const y = vertices[v * 6 + 1];
               const z = vertices[v * 6 + 2];
               
-              // web-ifc transform is column-major 4x4 matrix
               const tx = x * transform[0] + y * transform[4] + z * transform[8] + transform[12];
               const ty = x * transform[1] + y * transform[5] + z * transform[9] + transform[13];
               const tz = x * transform[2] + y * transform[6] + z * transform[10] + transform[14];
@@ -289,11 +295,31 @@ serve(async (req) => {
               positions[v * 3] = tx;
               positions[v * 3 + 1] = ty;
               positions[v * 3 + 2] = tz;
+
+              const nx = vertices[v * 6 + 3];
+              const ny = vertices[v * 6 + 4];
+              const nz = vertices[v * 6 + 5];
+
+              const tnx = nx * transform[0] + ny * transform[4] + nz * transform[8];
+              const tny = nx * transform[1] + ny * transform[5] + nz * transform[9];
+              const tnz = nx * transform[2] + ny * transform[6] + nz * transform[10];
+
+              const len = Math.sqrt(tnx * tnx + tny * tny + tnz * tnz);
+              const invLen = len > 0 ? 1.0 / len : 0;
+              
+              normals[v * 3] = tnx * invLen;
+              normals[v * 3 + 1] = tny * invLen;
+              normals[v * 3 + 2] = tnz * invLen;
             }
             
             const positionAccessor = doc.createAccessor()
               .setType('VEC3')
               .setArray(positions)
+              .setBuffer(buffer);
+
+            const normalAccessor = doc.createAccessor()
+              .setType('VEC3')
+              .setArray(normals)
               .setBuffer(buffer);
               
             const indexAccessor = doc.createAccessor()
@@ -304,9 +330,13 @@ serve(async (req) => {
             const prim = doc.createPrimitive()
               .setIndices(indexAccessor)
               .setAttribute('POSITION', positionAccessor)
+              .setAttribute('NORMAL', normalAccessor)
               .setMaterial(material);
               
             gltfMesh.addPrimitive(prim);
+          }
+          } catch (meshErr) {
+            console.warn(`[BIM] Failed to process mesh ${mesh.expressID}:`, meshErr);
           }
         });
 
@@ -329,10 +359,7 @@ serve(async (req) => {
             console.error("[BIM] GLB upload error:", uploadError);
             geometryError = uploadError.message;
           } else {
-            const { data: publicUrlData } = supabaseClient.storage
-              .from('bim-uploads')
-              .getPublicUrl(glbPath);
-            geometryUrl = publicUrlData.publicUrl;
+            geometryUrl = glbPath;
           }
         } else {
           geometryError = "Timeout during geometry extraction.";
@@ -405,9 +432,22 @@ serve(async (req) => {
     console.error('BIM Processing error:', error);
     
     // Attempt to update model status to 'error' if possible
-    try {
-      // In a real scenario we'd need to extract modelId again or keep it scoped
-    } catch (_) {}
+    if (modelId && supabaseClient) {
+      try {
+        await supabaseClient
+          .from('bim_models')
+          .update({
+            status: 'error',
+            metadata: {
+              error: error.message,
+              failed_at: new Date().toISOString()
+            }
+          })
+          .eq('id', modelId);
+      } catch (updateErr) {
+        console.error('Failed to update model status to error:', updateErr);
+      }
+    }
 
     return new Response(
       JSON.stringify({ error: error.message }),

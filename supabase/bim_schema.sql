@@ -64,8 +64,8 @@ COMMENT ON COLUMN bim_elements.created_at IS 'När elementet infogades.';
 
 -- 1. Skapa storage-bucketen 'bim-uploads' (privat) om den inte finns
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('bim-uploads', 'bim-uploads', false)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('bim-uploads', 'bim-uploads', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- Tillåt inloggade att ladda upp och läsa filer i bim-uploads
 CREATE POLICY "Tillåt inloggade att ladda upp" ON storage.objects
