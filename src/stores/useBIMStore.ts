@@ -23,10 +23,7 @@ export interface BIMSnapshot {
   created_at?: string;
 }
 
-import type { ParsedIfcModel } from '../bim/ifc/parseIfc';
-
 export interface BIMState {
-  parsedMeshes?: ParsedIfcModel['meshes'];
   activeModelId: string | null;
   modelUrl: string | null;
   modelName: string;
@@ -69,8 +66,6 @@ export interface BIMState {
   setError: (error: string | null) => void;
   setModelUrl: (url: string | null) => void;
   setModelName: (name: string) => void;
-  setParsedMeshes: (meshes?: ParsedIfcModel['meshes']) => void;
-  setActiveModelLocal: (modelId: string, elements: BIMElement[], meshes: ParsedIfcModel['meshes']) => void;
 }
 
 export const useBIMStore = create<BIMState>()(
@@ -81,7 +76,6 @@ export const useBIMStore = create<BIMState>()(
         activeModelId: null,
         modelUrl: null,
         modelName: 'Exempelmodell (Mock)',
-        parsedMeshes: undefined,
         elements: [],
         selectedElementIds: new Set<string>(),
         filters: {
@@ -103,7 +97,7 @@ export const useBIMStore = create<BIMState>()(
 
         // Actions
         setActiveModel: async (modelId) => {
-          set({ activeModelId: modelId, loading: true, error: null, parsedMeshes: undefined });
+          set({ activeModelId: modelId, loading: true, error: null });
           if (!modelId) {
             set({ modelUrl: null, elements: [], loading: false });
             return;
@@ -112,26 +106,11 @@ export const useBIMStore = create<BIMState>()(
             // Fetch model details for URL
             const { data: modelData, error: modelError } = await supabase
               .from('bim_models')
-              .select('geometry_url, has_geometry, file_url, project_id')
+              .select('geometry_url, has_geometry')
               .eq('id', modelId)
               .single();
 
             if (modelError) throw modelError;
-
-            let signedUrl = null;
-            let urlErrorMsg: string | null = null;
-            if (modelData.has_geometry && modelData.project_id) {
-              const glbPath = `projects/${modelData.project_id}/bim/${modelId}.glb`;
-              const { data: urlData, error: urlError } = await supabase.storage
-                .from('bim-uploads')
-                .createSignedUrl(glbPath, 3600);
-              
-              if (urlError) {
-                urlErrorMsg = urlError.message;
-              } else if (urlData) {
-                signedUrl = urlData.signedUrl;
-              }
-            }
 
             // Fetch elements
             const { data: elements, error: elementsError } = await supabase
@@ -142,10 +121,9 @@ export const useBIMStore = create<BIMState>()(
             if (elementsError) throw elementsError;
 
             set({
-              modelUrl: signedUrl,
+              modelUrl: modelData.geometry_url || null,
               elements: (elements as BIMElement[]) || [],
-              loading: false,
-              ...(urlErrorMsg ? { error: urlErrorMsg } : {})
+              loading: false
             });
           } catch (err: any) {
             // warning removed
@@ -249,15 +227,6 @@ export const useBIMStore = create<BIMState>()(
         setError: (error) => set({ error }),
         setModelUrl: (url) => set({ modelUrl: url }),
         setModelName: (name) => set({ modelName: name }),
-        setParsedMeshes: (meshes) => set({ parsedMeshes: meshes }),
-        setActiveModelLocal: (modelId, elements, meshes) => set({
-          activeModelId: modelId,
-          elements: elements,
-          parsedMeshes: meshes,
-          modelUrl: null,
-          loading: false,
-          error: null
-        }),
       }),
       {
         name: 'bim-store-snapshots',

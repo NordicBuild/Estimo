@@ -206,39 +206,6 @@ export class BIMScene {
    * Loads a GLB model
    * @param url URL to the GLB file
    */
-
-  public loadParsedModel(meshes: {expressID:number; geometry:THREE.BufferGeometry; color:[number,number,number,number]}[]): void {
-    this.modelGroup.clear();
-    this.elementsMap.clear();
-    this.originalMaterials.clear();
-    this.selectedElements.clear();
-
-    for (const meshData of meshes) {
-      const { expressID, geometry, color } = meshData;
-      
-      const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(color[0], color[1], color[2]),
-        transparent: color[3] < 1,
-        opacity: color[3],
-        side: THREE.DoubleSide
-      });
-      
-      this.setupMaterialClipping(material);
-      
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData.expressID = expressID;
-      
-      const elementId = String(expressID);
-      this.elementsMap.set(elementId, mesh);
-      this.originalMaterials.set(elementId, material);
-      
-      this.modelGroup.add(mesh);
-    }
-    
-    this.boundingBox.setFromObject(this.modelGroup);
-    this.frameAll();
-  }
-
   public async loadGLB(url: string): Promise<any[]> {
     const loader = new GLTFLoader();
     
@@ -259,7 +226,7 @@ export class BIMScene {
             
             // Assume the name or uuid is the element ID
             // In a real scenario, this comes from userData.guid or similar
-            const elementId = mesh.userData?.expressID !== undefined ? String(mesh.userData.expressID) : (mesh.userData?.guid || mesh.name || mesh.uuid);
+            const elementId = mesh.userData?.guid || mesh.name || mesh.uuid;
             this.elementsMap.set(elementId, mesh);
             
             // Store original material
@@ -410,21 +377,7 @@ export class BIMScene {
       // Find the first visible and valid intersected object
       for (const hit of intersects) {
         if (hit.object.visible) {
-          let curr: THREE.Object3D | null = hit.object;
-          let expressID: number | undefined;
-          
-          while (curr && curr !== this.modelGroup) {
-            if (curr.userData && curr.userData.expressID !== undefined) {
-              expressID = curr.userData.expressID;
-              break;
-            }
-            curr = curr.parent;
-          }
-          
-          const elementId = expressID !== undefined 
-            ? String(expressID)
-            : (hit.object.userData?.guid || hit.object.name || hit.object.uuid);
-            
+          const elementId = hit.object.userData?.guid || hit.object.name || hit.object.uuid;
           if (this.pickCallback) {
             this.pickCallback(elementId);
             return;
