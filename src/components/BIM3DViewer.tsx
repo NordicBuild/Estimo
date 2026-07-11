@@ -122,11 +122,21 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
             return;
           }
           
-          await sceneRef.current?.loadGLB(url);
+          const modelName = useBIMStore.getState().modelName || '';
+          const isIfc = url.toLowerCase().includes('.ifc') || modelName.toLowerCase().endsWith('.ifc');
+          let loadedElements: any[] = [];
+          if (isIfc) {
+            loadedElements = await sceneRef.current?.loadIFC(url) || [];
+          } else {
+            loadedElements = await sceneRef.current?.loadGLB(url) || [];
+          }
+
           if (!isCancelled) {
             setLoading(false);
-            // We intentionally do NOT call setElements(loadedElements) here 
-            // because our store already has the rich data from Postgres.
+            // If the store doesn't have elements (local parsing), use the extracted ones
+            if (useBIMStore.getState().elements.length === 0 && loadedElements.length > 0) {
+              setElements(loadedElements);
+            }
             sceneRef.current?.frameAll();
           }
         } catch (err: any) {
@@ -183,11 +193,10 @@ export const BIM3DViewer = forwardRef<BIM3DViewerHandle, BIM3DViewerProps>(
     useEffect(() => {
       if (!sceneRef.current) return;
       
+      sceneRef.current.setClippingEnabled(clipping.enabled);
+      
       if (clipping.enabled) {
         sceneRef.current.setClippingPlanes(clipping.axisX, clipping.axisY, clipping.axisZ);
-      } else {
-        // Reset clipping planes if disabled by setting them to full range (0-100)
-        sceneRef.current.setClippingPlanes([0, 100], [0, 100], [0, 100]);
       }
     }, [clipping]);
 

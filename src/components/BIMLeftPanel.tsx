@@ -76,65 +76,41 @@ export function BIMLeftPanel({ projectId, companyId }: BIMLeftPanelProps) {
   );
 
   const handleFileUpload = async (file: File, projectId?: string | null, companyId?: string | null) => {
-    if (!projectId || !companyId) {
-      setError("Project ID and Company ID are required for upload.");
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      const modelId = crypto.randomUUID();
-      const filePath = `projects/${projectId}/bim/${modelId}/${file.name}`;
+      console.log(`[BIM] Loading local IFC file ${file.name}...`);
       
-      console.log(`[BIM] Uploading ${file.name} to ${filePath}...`);
+      const localUrl = URL.createObjectURL(file);
       
-      // 1. Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from('bim-uploads')
-        .upload(filePath, file, { upsert: false });
-        
-      if (uploadError) throw uploadError;
-
-      console.log(`[BIM] Creating db record for model ${modelId}...`);
-
-      // 2. Create row in bim_models
-      const { error: dbError } = await supabase.from('bim_models').insert({
-        id: modelId,
-        company_id: companyId,
-        project_id: projectId,
-        name: file.name,
-        file_url: filePath,
-        format: 'ifc',
-        status: 'processing'
-      });
-
-      if (dbError) throw dbError;
-
-      console.log(`[BIM] Invoking parse function for ${modelId}...`);
-
-      // 3. Invoke parse function
-      const { data: funcData, error: funcError } = await supabase.functions.invoke('bim-process', {
-        body: { filePath, projectId, modelId, format: 'ifc' }
-      });
-
-      if (funcError) {
-         // warning removed
-         throw new Error(`Edge Function misslyckades: ${funcError.message || JSON.stringify(funcError)} (Se till att funktionen 'bim-process' är deployad i Supabase)`);
-      }
-
-      // Check if function returned an error in the response body
-      if (funcData && funcData.error) {
-         throw new Error(`BIM Process Error: ${funcData.error}`);
-      }
-
-      console.log(`[BIM] Successfully parsed IFC. Loading into viewer...`);
-
+      useBIMStore.getState().setElements([]);
+      setModelUrl(localUrl);
       setModelName(file.name);
-      await setActiveModel(modelId);
+      useBIMStore.getState().setActiveModel(null); // Bypass db fetch
+      
+      console.log(`[BIM] Loaded file locally into viewer.`);
+
+      // Optional background upload for persistence if needed
+      if (projectId && companyId) {
+        try {
+           const modelId = crypto.randomUUID();
+           const filePath = `projects/${projectId}/bim/${modelId}/${file.name}`;
+           await supabase.storage.from('bim-uploads').upload(filePath, file, { upsert: false });
+           await supabase.from('bim_models').insert({
+             id: modelId,
+             company_id: companyId,
+             project_id: projectId,
+             name: file.name,
+             file_url: filePath,
+             format: 'ifc',
+             status: 'ready'
+           });
+        } catch (e) {
+           console.warn("Background upload failed, but local view works.", e);
+        }
+      }
 
     } catch (err: any) {
-      // warning removed
       setError(err.message || "Failed to process IFC file.");
     } finally {
       setLoading(false);

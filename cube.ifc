@@ -1,0 +1,10 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('cube.ifc','2023-01-01T12:00:00',('Architect'),('Office'),'PreProcessor','System','Authorization');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1234567890123456789012',#2,'Project',$,$,$,$,(#3),#4);
+ENDSEC;
+END-ISO-10303-21;
