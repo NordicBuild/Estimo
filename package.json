@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prepare:wasm": "node scripts/copy-web-ifc-wasm.mjs",
+    "predev": "npm run prepare:wasm",
+    "prebuild": "npm run prepare:wasm",
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "NODE_OPTIONS=--max-old-space-size=2048 vite build",
     "preview": "vite preview",
@@ -27,17 +30,8 @@
     "three": "^0.160.0",
     "vite": "^6.2.3",
     "web-ifc": "^0.0.77",
-    "web-ifc-three": "^0.0.126",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.14"
-  },
-  "overrides": {
-    "web-ifc-three": {
-      "three": "$three"
-    },
-    "three-mesh-bvh": {
-      "three": "$three"
-    }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.1",

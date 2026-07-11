@@ -1,3 +1,9 @@
+/**
+ * NOTE: This edge function is no longer called by the frontend.
+ * The client now parses IFC locally via web-ifc in the browser.
+ * This is a candidate for removal. Refer to recent updates.
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import * as WebIFC from "https://esm.sh/web-ifc@0.0.66";

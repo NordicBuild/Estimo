@@ -96,6 +96,12 @@ export const useBIMStore = create<BIMState>()(
         error: null,
 
         // Actions
+        /**
+         * Note on model loading paths:
+         * 1. setActiveModel() (below) reads `geometry_url` from the database. It is intended for server/cloud-hosted models.
+         * 2. The local file uploader uses `setModelUrl(blobUrl)` and bypasses `setActiveModel()`.
+         * Both paths are currently supported, but ensure you know which one is active in the current session.
+         */
         setActiveModel: async (modelId) => {
           set({ activeModelId: modelId, loading: true, error: null });
           if (!modelId) {

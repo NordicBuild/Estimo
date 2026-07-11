@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-// @ts-ignore
-import { IFCLoader } from 'web-ifc-three/IFCLoader';
+import * as WebIFC from 'web-ifc';
 
 export interface BIMSceneConfig {
   backgroundColor?: number | string;
@@ -41,9 +40,19 @@ export class BIMScene {
   };
   private boundingBox: THREE.Box3 = new THREE.Box3();
 
-  private ifcManager: any;
-  private ifcModelID?: number;
   
+  
+  private ifcApi: WebIFC.IfcAPI | null = null;
+
+  private async getIfcApi(): Promise<WebIFC.IfcAPI> {
+    if (this.ifcApi) return this.ifcApi;
+    const api = new WebIFC.IfcAPI();
+    api.SetWasmPath('/wasm/', true);
+    await api.Init();
+    this.ifcApi = api;
+    return api;
+  }
+
   private highlightMaterial = new THREE.MeshBasicMaterial({
     color: 0x00ff00,
     depthTest: false,
@@ -220,116 +229,163 @@ export class BIMScene {
    * @param url URL to the IFC file
    */
   public async loadIFC(url: string): Promise<any[]> {
-    // @ts-ignore
-    const loader = new IFCLoader();
-    loader.ifcManager.setWasmPath('/'); // Load WASM locally from public folder
-    
-    return new Promise((resolve, reject) => {
-      loader.load(url, async (ifcModel: any) => {
-        try {
-          this.modelGroup.clear();
-          this.elementsMap.clear();
-          this.originalMaterials.clear();
-          this.selectedElements.clear();
+    try {
+      const response = await fetch(url);
+      const buffer = await response.arrayBuffer();
+      const buf = new Uint8Array(buffer);
 
-          this.modelGroup.add(ifcModel);
-          this.ifcManager = loader.ifcManager;
-          this.ifcModelID = ifcModel.modelID;
+      const api = await this.getIfcApi();
+      const modelID = api.OpenModel(buf, { COORDINATE_TO_ORIGIN: true });
 
-          ifcModel.traverse((child: any) => {
-            if (child.isMesh) {
-              if (Array.isArray(child.material)) {
-                child.material.forEach((m: any) => this.setupMaterialClipping(m));
-              } else {
-                this.setupMaterialClipping(child.material);
-              }
-            }
+      this.modelGroup.clear();
+      this.elementsMap.clear();
+      this.originalMaterials.clear();
+      this.selectedElements.clear();
+
+      
+
+      const elements: any[] = [];
+      const expressIDs = new Set<number>();
+
+      api.StreamAllMeshes(modelID, (flatMesh) => {
+        expressIDs.add(flatMesh.expressID);
+        const size = flatMesh.geometries.size();
+        for (let i = 0; i < size; i++) {
+          const placed = flatMesh.geometries.get(i);
+          const g = api.GetGeometry(modelID, placed.geometryExpressID);
+          
+          const verts = api.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize());
+          const idx = api.GetIndexArray(g.GetIndexData(), g.GetIndexDataSize());
+
+          const geometry = new THREE.BufferGeometry();
+          const position = new THREE.InterleavedBufferAttribute(new THREE.InterleavedBuffer(verts, 6), 3, 0);
+          const normal = new THREE.InterleavedBufferAttribute(new THREE.InterleavedBuffer(verts, 6), 3, 3);
+          geometry.setAttribute('position', position);
+          geometry.setAttribute('normal', normal);
+          geometry.setIndex(new THREE.BufferAttribute(idx, 1));
+
+          const color = placed.color;
+          const material = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(color.x, color.y, color.z),
+            transparent: color.w < 1,
+            opacity: color.w
           });
+          this.setupMaterialClipping(material);
 
-          const elements: any[] = [];
-          
-          const spatialTree = await this.ifcManager.getSpatialStructure(this.ifcModelID);
-          
-          const traverseTree = async (node: any, parentStorey: string = 'Unknown') => {
-              if (!node) return;
-              
-              let currentStorey = parentStorey;
-              if (node.type === 'IFCBUILDINGSTOREY') {
-                 try {
-                     const props = await this.ifcManager.getItemProperties(this.ifcModelID, node.expressID);
-                     if (props && props.Name) {
-                         currentStorey = props.Name.value;
-                     }
-                 } catch (e) {}
-              }
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.matrix.fromArray(placed.flatTransformation);
+          mesh.matrixAutoUpdate = false;
 
-              const expressID = node.expressID;
-              if (expressID !== undefined && node.type !== 'IFCPROJECT' && node.type !== 'IFCSITE' && node.type !== 'IFCBUILDING' && node.type !== 'IFCBUILDINGSTOREY') {
-                  try {
-                      const props = await this.ifcManager.getItemProperties(this.ifcModelID, expressID);
-                      if (props) {
-                          const name = props.Name?.value || props.GlobalId?.value || `Element ${expressID}`;
-                          const category = node.type || props.type || 'IfcBuildingElementProxy';
-                          
-                          elements.push({
-                              id: `Element_${expressID}`,
-                              guid: props.GlobalId?.value || String(expressID),
-                              name: name,
-                              category: category,
-                              storey: currentStorey,
-                              discipline: 'ARCHITECTURE',
-                              properties: {
-                                  ...props,
-                                  ExpressID: expressID
-                              }
-                          });
-                      }
-                  } catch (e) {
-                      console.warn(`Could not get properties for ${expressID}`, e);
-                  }
-              }
-              
-              if (node.children) {
-                  for (const child of node.children) {
-                      await traverseTree(child, currentStorey);
-                  }
-              }
-          };
+          const elementId = `Element_${flatMesh.expressID}`;
+          mesh.name = elementId;
+          mesh.userData = { expressID: flatMesh.expressID, guid: elementId };
           
-          if (spatialTree) {
-              await traverseTree(spatialTree);
-          }
-          
-          if (elements.length === 0) {
-             // Fallback if no spatial tree or tree yielded no elements
-             console.log(`[BIMScene] Fallback: reading mesh user data`);
-             ifcModel.traverse((child: any) => {
-               if (child.isMesh) {
-                 const mesh = child as THREE.Mesh;
-                 const elementId = mesh.userData?.guid || mesh.uuid || `Mesh_${Math.random()}`;
-                 this.elementsMap.set(elementId, mesh);
-                 this.originalMaterials.set(elementId, mesh.material);
-                 
-                 elements.push({
-                     id: elementId,
-                     guid: elementId,
-                     name: mesh.name || `IFC Element ${elementId.substring(0, 5)}`,
-                     category: 'IfcBuildingElementProxy',
-                     storey: 'Unknown',
-                     discipline: 'ARCHITECTURE',
-                     properties: {}
-                 });
-               }
-             });
-          }
+          this.modelGroup.add(mesh);
+          this.elementsMap.set(elementId, mesh);
+          this.originalMaterials.set(elementId, mesh.material);
 
-          this.boundingBox.setFromObject(this.modelGroup);
-          resolve(elements);
-        } catch(e) {
-          reject(e);
+          g.delete(); // Free WASM memory
         }
-      }, undefined, reject);
-    });
+      });
+
+      // Transform Z-up to Y-up
+      this.modelGroup.rotation.x = -Math.PI / 2;
+      this.modelGroup.updateMatrixWorld(true);
+
+      this.boundingBox.setFromObject(this.modelGroup);
+
+      // Build element list with web-ifc properties
+      let spatialTree: any = null;
+      try {
+        spatialTree = await api.properties.getSpatialStructure(modelID, true);
+      } catch (e) {
+        console.warn('Could not get spatial structure', e);
+      }
+
+      const storeyMap = new Map<number, string>();
+      const traverseTree = async (node: any, parentStorey: string = 'Unknown') => {
+        if (!node) return;
+        let currentStorey = parentStorey;
+        if (node.type === 'IFCBUILDINGSTOREY') {
+          try {
+            const props = await api.properties.getItemProperties(modelID, node.expressID, false);
+            if (props && props.Name && props.Name.value) {
+              currentStorey = props.Name.value;
+            }
+          } catch (e) {}
+        }
+        storeyMap.set(node.expressID, currentStorey);
+        if (node.children) {
+          for (const child of node.children) {
+            await traverseTree(child, currentStorey);
+          }
+        }
+      };
+
+      if (spatialTree) {
+        await traverseTree(spatialTree);
+      }
+
+      for (const expressID of expressIDs) {
+        let name = `Element ${expressID}`;
+        let category = 'IfcBuildingElementProxy';
+        let props: any = {};
+        let guid = String(expressID);
+
+        try {
+          const typeCode = api.GetLineType(modelID, expressID);
+          if (typeCode !== undefined) {
+            const typeName = api.GetNameFromTypeCode(typeCode);
+            if (typeName) category = typeName;
+          }
+        } catch (e) {}
+
+        try {
+          const itemProps = await api.properties.getItemProperties(modelID, expressID, true);
+          if (itemProps) {
+            props = itemProps;
+            if (props.Name && props.Name.value) name = props.Name.value;
+            if (props.GlobalId && props.GlobalId.value) guid = props.GlobalId.value;
+          }
+        } catch (e) {
+          console.warn(`Could not get properties for ${expressID}`, e);
+        }
+
+        elements.push({
+          id: `Element_${expressID}`,
+          guid: guid,
+          name: name,
+          category: category,
+          storey: storeyMap.get(expressID) || 'Unknown',
+          discipline: 'ARCHITECTURE',
+          properties: { ...props, ExpressID: expressID }
+        });
+      }
+
+      if (elements.length === 0) {
+        console.log(`[BIMScene] Fallback: reading mesh user data`);
+        this.modelGroup.children.forEach((mesh: any) => {
+          const expressID = mesh.userData?.expressID;
+          const elementId = mesh.userData?.guid || mesh.uuid;
+          elements.push({
+            id: elementId,
+            guid: elementId,
+            name: mesh.name || `IFC Element ${elementId.substring(0, 5)}`,
+            category: 'IfcBuildingElementProxy',
+            storey: 'Unknown',
+            discipline: 'ARCHITECTURE',
+            properties: expressID ? { ExpressID: expressID } : {}
+          });
+        });
+      }
+
+      this.frameAll();
+
+      return elements;
+    } catch (e) {
+      console.error('Failed to load IFC:', e);
+      throw e;
+    }
   }
 
   /**
@@ -404,21 +460,6 @@ export class BIMScene {
   public selectElement(elementId: string): void {
     this.selectedElements.add(elementId);
     
-    if (this.ifcManager && this.ifcModelID !== undefined && elementId.startsWith('Element_')) {
-       const expressID = parseInt(elementId.replace('Element_', ''), 10);
-       if (!isNaN(expressID)) {
-          this.ifcManager.createSubset({
-             modelID: this.ifcModelID,
-             ids: [expressID],
-             material: this.highlightMaterial,
-             scene: this.modelGroup,
-             removePrevious: false,
-             customID: 'highlight'
-          });
-       }
-       return;
-    }
-
     const mesh = this.elementsMap.get(elementId);
     if (!mesh || !(mesh as THREE.Mesh).isMesh) return;
 
@@ -448,10 +489,6 @@ export class BIMScene {
    * Deselects all elements
    */
   public deselectAll(): void {
-    if (this.ifcManager && this.ifcModelID !== undefined) {
-        this.ifcManager.removeSubset(this.ifcModelID, this.highlightMaterial, 'highlight');
-    }
-
     this.selectedElements.forEach(id => {
       const mesh = this.elementsMap.get(id);
       if (mesh && (mesh as THREE.Mesh).isMesh) {
@@ -468,11 +505,6 @@ export class BIMScene {
    * Sets visibility of an element
    */
   public setElementVisibility(elementId: string, visible: boolean): void {
-    if (this.ifcManager && this.ifcModelID !== undefined && elementId.startsWith('Element_')) {
-       // Visibility for web-ifc-three is complicated without re-creating subsets.
-       // We can rely on `ifcManager.removeFromSubset` or ignore if too complex.
-       // For now, this fallback avoids crash, but full visibility toggle requires more complex subset handling.
-    }
     const mesh = this.elementsMap.get(elementId);
     if (mesh) {
       mesh.visible = visible;
@@ -535,19 +567,10 @@ export class BIMScene {
       // Find the first visible and valid intersected object
       for (const hit of intersects) {
         if (hit.object.visible) {
-          if (this.ifcManager && this.ifcModelID !== undefined && hit.faceIndex !== undefined) {
-             const mesh = hit.object as THREE.Mesh;
-             const expressID = this.ifcManager.getExpressId(mesh.geometry, hit.faceIndex);
-             if (expressID !== undefined && expressID !== -1) {
-                 if (this.pickCallback) this.pickCallback(`Element_${expressID}`);
-                 return;
-             }
-          } else {
-            const elementId = hit.object.userData?.guid || hit.object.name || hit.object.uuid;
-            if (this.pickCallback) {
-              this.pickCallback(elementId);
-              return;
-            }
+          const elementId = hit.object.name || hit.object.userData?.guid || hit.object.uuid;
+          if (this.pickCallback) {
+            this.pickCallback(elementId);
+            return;
           }
         }
       }
