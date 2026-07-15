@@ -86,9 +86,11 @@ const LocalNumberInput = ({ initialValue, onChange }: { initialValue: number, on
 
 import { useProjectData } from '../state/ProjectDataContext';
 import { useKalkylHistory } from '../state/KalkylHistoryContext';
+import { useDocumentBygdelLinks } from '../ffu/hooks/useDocumentBygdelLinks';
 
 export function KalkylTab(props: Props) {
   const projectData = useProjectData();
+  const { links: docLinks } = useDocumentBygdelLinks((projectData?.projectInfo as any)?.id || localStorage.getItem('activeProjectId'));
   const kalkylHistory = useKalkylHistory();
   
   // Use context values instead of props, falling back to props if context is missing (though it shouldn't be).
@@ -341,6 +343,7 @@ export function KalkylTab(props: Props) {
               materials={materials}
               showInactiveMoments={showInactiveMoments}
               variables={projectInfo.variables}
+              docLinks={docLinks}
               toggleByggdel={toggleByggdel}
               togglePartActive={togglePartActive}
               clonePart={clonePart}

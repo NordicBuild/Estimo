@@ -10,6 +10,7 @@ interface Props {
   materials: Material[]; // array for dropdown
   showInactiveMoments: boolean;
   variables?: Record<string, number>;
+  docLinks?: any[];
   
   // Callbacks
   toggleByggdel: (id: number) => void;
@@ -33,6 +34,16 @@ export function UnifiedGrid(props: Props) {
   ]);
 
   const [activeCell, setActiveCell] = useState<{ rowIdx: number, colKey: string } | null>(null);
+  const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set());
+
+  const toggleDocs = (id: number) => {
+    setExpandedDocs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const [editValue, setEditValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -361,8 +372,13 @@ export function UnifiedGrid(props: Props) {
             if (row.kind === 'section') {
               const inact = !row.active;
               const warnings = getRowWarnings(row, rIdx);
+              const partLinks = props.docLinks?.filter(l => l.byggdel_id === String(row.byggdelId)) || [];
+              const hasLinks = partLinks.length > 0;
+              const isExpanded = expandedDocs.has(row.byggdelId);
+              
               return (
-                <tr key={`sec-${row.byggdelId}`} className={`border-b border-gray-200 bg-[#f1f5f9] hover:bg-[#e2e8f0] font-semibold text-gray-800 ${inact ? 'opacity-50' : ''}`}>
+                <React.Fragment key={`sec-${row.byggdelId}`}>
+                <tr className={`border-b border-gray-200 bg-[#f1f5f9] hover:bg-[#e2e8f0] font-semibold text-gray-800 ${inact ? 'opacity-50' : ''}`}>
                   <td className="p-1 text-center border-r border-gray-200">
                     <button onClick={() => props.toggleByggdel(row.byggdelId)} className="w-6 h-6 rounded hover:bg-gray-300 flex items-center justify-center text-gray-500">
                       <i className={`fa-solid fa-chevron-${row.isCollapsed ? 'right' : 'down'} text-[10px]`}></i>
@@ -382,6 +398,15 @@ export function UnifiedGrid(props: Props) {
                       )}
                     </div>
                     <span className="text-[9px] text-gray-500 font-normal uppercase tracking-wider">{row.type}</span>
+                    {hasLinks && (
+                      <span 
+                        className="ml-2 text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded cursor-pointer border border-blue-200 hover:bg-blue-100 flex items-center gap-1 w-fit"
+                        onClick={(e) => { e.stopPropagation(); toggleDocs(row.byggdelId); }}
+                        title="Klicka för att se länkade dokument"
+                      >
+                        <i className="fa-solid fa-file-lines"></i> {partLinks.length} länkade
+                      </span>
+                    )}
                   </td>
                   <td className="p-1 border-r border-gray-200 bg-gray-50"></td>
                   
@@ -422,6 +447,31 @@ export function UnifiedGrid(props: Props) {
                     <IconButton className="w-6 h-6 text-gray-400 hover:text-red-600" title="Radera" onClick={() => props.removePart(row.byggdelId)} icon="delete" />
                   </td>
                 </tr>
+                {hasLinks && isExpanded && (
+                  <tr className="bg-white border-b border-gray-200">
+                    <td colSpan={2} className="border-r border-gray-200 bg-gray-50"></td>
+                    <td colSpan={11} className="p-3 bg-gray-50/50">
+                      <div className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
+                        <i className="fa-solid fa-link text-gray-400"></i> Kopplade Dokument
+                      </div>
+                      <div className="space-y-2">
+                        {partLinks.map((link: any) => (
+                          <div key={link.id} className="flex items-center gap-3 bg-white p-2 rounded border border-gray-200">
+                            <i className="fa-solid fa-file-pdf text-red-500"></i>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{link.document?.filename || 'Okänt dokument'}</div>
+                              <div className="text-xs text-gray-500">Typ: {link.link_type} {link.notes ? `- ${link.notes}` : ''}</div>
+                            </div>
+                            <a href={`/?tab=dokument_ffu`} className="text-blue-600 hover:text-blue-800 text-xs font-medium px-3 py-1 bg-blue-50 rounded">
+                              Öppna i FFU
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             }
             

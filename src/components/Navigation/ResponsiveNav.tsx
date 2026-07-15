@@ -36,6 +36,7 @@ export function ResponsiveNav({ currentTab, onTabChange, currentPageTitle, goBac
     { id: 'kalkyl', label: 'Kalkyl', icon: <Calculator className="w-5 h-5" /> },
     { id: 'material', label: 'Mat', icon: <Box className="w-5 h-5" /> },
     { id: 'pdf', label: 'PDF', icon: <FileText className="w-5 h-5" /> },
+    { id: 'bim', label: 'BIM', icon: <Smartphone className="w-5 h-5" /> },
     { id: 'admin', label: 'Admin', icon: <Settings className="w-5 h-5" /> }
   ];
 

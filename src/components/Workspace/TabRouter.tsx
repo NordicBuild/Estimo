@@ -14,6 +14,7 @@ import { MinaUppgifterTab } from '../MinaUppgifterTab';
 import { PdfMeasurementTab } from '../PdfMeasurementTab';
 import { AnalysTab } from '../AnalysTab';
 import { MaterialTab } from '../MaterialTab';
+import { FfuTab } from '../Ffu/FfuTab';
 
 const FallbackSpinner = () => (
   <div className="flex-1 flex items-center justify-center p-8">
@@ -177,13 +178,7 @@ export function TabRouter(props: any) {
         </div>
       )}
       {activeTab === 'dokument_ffu' && (
-        <div className="p-8 flex items-center justify-center h-full">
-          <div className="text-center">
-            <span className="material-symbols-outlined text-6xl text-surface-container-highest mb-4">description</span>
-            <h2 className="text-2xl font-bold text-on-surface">FFU</h2>
-            <p className="text-on-surface-variant mt-2">Denna sektion är under utveckling.</p>
-          </div>
-        </div>
+        <FfuTab projectId={rest.activeProjectId || ''} />
       )}
       {activeTab === 'dokument_modell' && (
         <div className="p-8 flex items-center justify-center h-full">
