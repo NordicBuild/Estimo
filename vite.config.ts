@@ -23,16 +23,14 @@ export default defineConfig(({ mode }) => {
       exclude: ['web-ifc']
     },
     build: {
-      chunkSizeWarningLimit: 3000,
       rollupOptions: {
         output: {
-          manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.includes('three')) return 'three';
-              if (id.includes('pdfjs-dist')) return 'pdfjs';
-              if (id.includes('xlsx')) return 'xlsx';
-              return 'vendor';
-            }
+          manualChunks: {
+            'three': ['three'],
+            'pdfjs-dist': ['pdfjs-dist'],
+            'xlsx': ['xlsx'],
+            'html2pdf': ['html2pdf.js'],
+            'recharts': ['recharts']
           }
         }
       }

@@ -71,7 +71,7 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
   const resursTabs = ['arbetare', 'fastigheter', 'maskiner', 'bilar', 'ovrigt', 'receptbibliotek'];
   const isResursActive = resursTabs.includes(activeTab);
 
-  const projektunderlagTabs = ['dokument_ffu', 'dokument_modell', 'dokument_kommunikation', 'pdf', 'bim'];
+  const projektunderlagTabs = ['dokument_ffu', 'dokument_modell', 'dokument_kommunikation', 'pdf'];
   const isProjektunderlagActive = projektunderlagTabs.includes(activeTab);
 
   const mainTabs = [
@@ -127,7 +127,6 @@ export function WorkspaceNav({ activeTab, setActiveTab, sidebarOpen, setSidebarO
               { id: 'dokument_modell', label: 'Modell', icon: 'architecture' },
               { id: 'dokument_kommunikation', label: 'Kommunikation', icon: 'forum' },
               { id: 'pdf', label: 'PDF-Mätningar', icon: 'picture_as_pdf' },
-              { id: 'bim', label: 'BIM-Mätning', icon: 'view_in_ar' },
             ];
           }
           

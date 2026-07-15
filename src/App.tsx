@@ -25,7 +25,7 @@ import { KalkylHistoryProvider } from './state/KalkylHistoryContext';
 
 export default function App() {
   const [appMode, setAppMode] = useState<'kalkyl' | 'admin'>(() => (localStorage.getItem('betong_app_mode') as any) || 'kalkyl');
-  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'bim' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek' | 'mina_uppgifter'>(() => {
+  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek' | 'mina_uppgifter'>(() => {
     return (localStorage.getItem('betong_active_tab') as any) || 'projekt';
   });
   const [adminSubTab, setAdminSubTab] = useState<'oversikt' | 'kunder' | 'fakturor' | 'register' | 'installningar' | 'analys'>(() => {
@@ -1467,7 +1467,7 @@ export default function App() {
           />
 
           <div className="flex-1 relative flex min-w-0 min-h-0">
-            <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf', 'bim'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
+            <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
         <TabRouter 
           activeTab={activeTab}
           user={user}

@@ -12,7 +12,6 @@ import { PrognosTab } from '../PrognosTab';
 import { ReceptbibliotekTab } from '../ReceptbibliotekTab';
 import { MinaUppgifterTab } from '../MinaUppgifterTab';
 import { PdfMeasurementTab } from '../PdfMeasurementTab';
-import { BIMMeasurementTab } from '../BIMMeasurementTab';
 import { AnalysTab } from '../AnalysTab';
 import { MaterialTab } from '../MaterialTab';
 
@@ -105,11 +104,6 @@ export function TabRouter(props: any) {
       {activeTab === 'pdf' && (
         <Suspense fallback={<FallbackSpinner />}>
           <PdfMeasurementTab addParts={rest.addMeasurementParts} />
-        </Suspense>
-      )}
-      {activeTab === 'bim' && (
-        <Suspense fallback={<FallbackSpinner />}>
-          <BIMMeasurementTab addParts={rest.addMeasurementParts} projectId={rest.activeProjectId} companyId={rest.dataSpaceId} />
         </Suspense>
       )}
       {activeTab === 'material' && (
