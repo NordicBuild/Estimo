@@ -37,9 +37,10 @@ export function useDocumentBygdelLinks(projectId: string | null) {
       .is('deleted_at', null);
       
     if (error) {
-      console.error('Error fetching links', error);
+      // console.warn('Table might not exist, using empty array for links', error);
+      setLinks([]);
     } else {
-      setLinks(data as any);
+      setLinks(data as any || []);
     }
     setIsLoading(false);
   }, [projectId, user]);

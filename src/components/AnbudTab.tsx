@@ -94,8 +94,9 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, mate
 
         <div className="mb-8">
           <h3 className="text-lg font-bold border-b-2 border-[var(--border)] pb-2 mb-4">Ingående delar i entreprenaden</h3>
-          <table className="w-full text-left border-collapse">
-            <thead>
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left border-collapse whitespace-nowrap sm:whitespace-normal">
+              <thead>
               <tr className="bg-[var(--surface3)] text-xs uppercase tracking-wide text-[var(--text2)]">
                 <th className="p-3 border-b border-[var(--border)]">Byggdel</th>
                 <th className="p-3 border-b border-[var(--border)] num">Antal</th>
@@ -168,10 +169,11 @@ export function AnbudTab({ calcResult, byggdelar, projectInfo, companyInfo, mate
                 })
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
 
-        <div className="flex justify-end pt-4 border-t-2 border-[var(--border)] mt-8">
+        <div id="pdf-summary-section" className="flex justify-end pt-4 border-t-2 border-[var(--border)] mt-8">
           <div className="w-96 border border-[var(--border)] rounded-lg overflow-hidden shadow-sm">
             <div className="bg-[var(--surface3)] text-[var(--text1)] text-center py-2 text-[0.65rem] font-extrabold uppercase tracking-widest border-b border-[var(--border)]">
                Sammanställning

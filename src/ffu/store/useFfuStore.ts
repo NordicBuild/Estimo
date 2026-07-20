@@ -289,7 +289,7 @@ export const useFfuSearch = () => {
       }
       if (searchText) {
         const query = searchText.toLowerCase();
-        if (!doc.filename.toLowerCase().includes(query)) {
+        if (!(doc.filename || '').toLowerCase().includes(query)) {
           return false;
         }
       }

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { INITIAL_MATERIALS, INITIAL_ARBETS_DATA, Material, ArbetsMoment, Byggdel, INITIAL_TIDSFAKTORER, TYPE_UNIT, ProjectInfo, CompanyInfo, INITIAL_PROJECT_INFO, INITIAL_COMPANY_INFO, SavedProject, ProjectFolder } from "./data";
-import { useCalculation } from "./useCalculation";
+import { INITIAL_MATERIALS, INITIAL_ARBETS_DATA, Material, ArbetsMoment, Byggdel, INITIAL_TIDSFAKTORER, TYPE_UNIT, ProjectInfo, CompanyInfo, INITIAL_PROJECT_INFO, INITIAL_COMPANY_INFO, SavedProject, ProjectFolder, ProjectVersion } from "./data";
+import { useCalculation, computeCalculation } from "./useCalculation";
+import { SnapshotComparison } from "./components/SnapshotComparison";
 // import removed
 import { AdminTab } from "./components/AdminTab";
 import { ByggdelModal } from "./components/ByggdelModal";
@@ -12,7 +13,7 @@ import { useAppAuth } from './hooks/useAppAuth';
 import { useByggdelModal } from './hooks/useByggdelModal';
 import { useSupabaseData } from './hooks/useSupabaseData';
 import { WorkspaceActions, WorkspaceNav } from "./components/WorkspaceToolbar";
-import { supabase, logout, loginWithGoogle } from "./supabase";
+import { supabase, logout, loginWithGoogle, saveProjectsToSupabase, saveFoldersToSupabase } from "./supabase";
 import { User } from '@supabase/supabase-js';
 import { logEvent } from './lib/audit';
 // import removed
@@ -25,7 +26,7 @@ import { KalkylHistoryProvider } from './state/KalkylHistoryContext';
 
 export default function App() {
   const [appMode, setAppMode] = useState<'kalkyl' | 'admin'>(() => (localStorage.getItem('betong_app_mode') as any) || 'kalkyl');
-  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek' | 'mina_uppgifter'>(() => {
+  const [activeTab, setActiveTab] = useState<'hemsida' | 'projekt' | 'kalkyl' | 'pdf' | 'material' | 'arbete' | 'analys' | 'sammanstalln' | 'planering' | 'slutsida' | 'anbud' | 'inkop' | 'prognos' | 'admin' | 'maskiner' | 'bilar' | 'ovrigt' | 'dokument_ffu' | 'admin_ffu' | 'inspektioner' | 'dokument_modell' | 'dokument_kommunikation' | 'arbetare' | 'fastigheter' | 'receptbibliotek' | 'mina_uppgifter' | 'aktivitetslogg' | 'kalkylprojekt' | 'portfolio'>(() => {
     return (localStorage.getItem('betong_active_tab') as any) || 'projekt';
   });
   const [adminSubTab, setAdminSubTab] = useState<'oversikt' | 'kunder' | 'fakturor' | 'register' | 'installningar' | 'analys'>(() => {
@@ -139,6 +140,20 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ny byggdel (Ctrl+N)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        openModal();
+        return;
+      }
+      
+      // Projektöversikt (Ctrl+P)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setActiveTab('projekt');
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
           // Let native undo work in input fields
@@ -156,10 +171,53 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyIndex, byggdelHistory]);
 
-  const createFolder = () => {
+
+  const [snapshots, setSnapshots] = useState<ProjectVersion[]>(() => {
+    const saved = localStorage.getItem('betong_snapshots');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('betong_snapshots', JSON.stringify(snapshots));
+  }, [snapshots]);
+
+  const saveSnapshot = () => {
+    const name = prompt("Ange ett namn för ögonblicksbilden:", `Version ${snapshots.length + 1}`);
+    if (name) {
+      const newSnapshot: ProjectVersion = {
+        id: crypto.randomUUID(),
+        name,
+        timestamp: new Date().toISOString(),
+        byggdelar: JSON.parse(JSON.stringify(byggdelar))
+      };
+      setSnapshots([...snapshots, newSnapshot]);
+    }
+  };
+
+  const restoreSnapshot = (snapshot: ProjectVersion) => {
+    if (confirm(`Är du säker på att du vill återställa till "${snapshot.name}"? Den nuvarande kalkylen kommer att ersättas.`)) {
+      setSupabaseByggdelar(snapshot.byggdelar);
+      setSnapshotModalOpen(false);
+    }
+  };
+
+  const deleteSnapshot = (id: string) => {
+    if (confirm("Är du säker på att du vill radera denna ögonblicksbild?")) {
+      setSnapshots(snapshots.filter(s => s.id !== id));
+    }
+  };
+
+  const createFolder = (parentId?: string) => {
     promptAction("Ny mapp", "Namn på ny mapp:", "", (name) => {
       if (name && name.trim()) {
-        setFolders(prev => [...prev, { id: 'folder_' + Date.now(), name: name.trim() }]);
+        setFolders(prev => {
+          const updated = [...prev, { id: 'folder_' + Date.now(), name: name.trim(), parentId }];
+          localStorage.setItem('betong_folders', JSON.stringify(updated));
+          if (dataSpaceId) saveFoldersToSupabase(updated, dataSpaceId, user?.id || '');
+          // if (dataSpaceId) saveProjectsToSupabase(projects, dataSpaceId, user?.id || '');
+          return updated;
+        });
       }
     });
   };
@@ -194,6 +252,7 @@ export default function App() {
         setProjects(prev => {
           const updated = [...prev, newProj];
           localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
+          if (dataSpaceId) saveProjectsToSupabase(updated, dataSpaceId, user?.id || '');
           return updated;
         });
         setByggdelar(newProj.byggdelar);
@@ -220,6 +279,7 @@ export default function App() {
     setProjects(prev => {
       const updated = [...prev, newProj];
       localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
+      if (dataSpaceId) saveProjectsToSupabase(updated, dataSpaceId, user?.id || '');
       return updated;
     });
     setByggdelar(newProj.byggdelar);
@@ -253,6 +313,7 @@ export default function App() {
 
       setProjects(updatedList);
       localStorage.setItem('betong_saved_projects', JSON.stringify(updatedList));
+      if (dataSpaceId) saveProjectsToSupabase(updatedList, dataSpaceId, user?.id || '');
       
       if (activeProjectId === id) {
         const next = updatedList[0];
@@ -269,6 +330,7 @@ export default function App() {
           const isOnlyFallback = prev.length === 1 && prev[0].projectInfo.name === '' && prev[0].byggdelar.length === 0;
           const restored = isOnlyFallback ? [deletedProject] : [...prev, deletedProject];
           localStorage.setItem('betong_saved_projects', JSON.stringify(restored));
+          if (dataSpaceId) saveProjectsToSupabase(restored, dataSpaceId, user?.id || '');
           return restored;
         });
         setUndoToast(null);
@@ -282,7 +344,13 @@ export default function App() {
     if (!folder) return;
     promptAction("Ändra namn", "Ange nytt namn för mappen:", folder.name, (newName) => {
       if (newName && newName.trim()) {
-        setFolders(prev => prev.map(f => f.id === id ? { ...f, name: newName.trim() } : f));
+        setFolders(prev => {
+          const updated = prev.map(f => f.id === id ? { ...f, name: newName.trim() } : f);
+          localStorage.setItem('betong_folders', JSON.stringify(updated));
+          if (dataSpaceId) saveFoldersToSupabase(updated, dataSpaceId, user?.id || '');
+          if (dataSpaceId) saveProjectsToSupabase(projects, dataSpaceId, user?.id || '');
+          return updated;
+        });
       }
     });
   };
@@ -293,7 +361,12 @@ export default function App() {
     if (!project) return;
     promptAction("Ändra namn", "Ange nytt namn för projektet:", project.projectInfo.name || '', (newName) => {
       if (newName && newName.trim()) {
-        setProjects(prev => prev.map(p => p.id === id ? { ...p, projectInfo: { ...p.projectInfo, name: newName.trim() } } : p));
+        setProjects(prev => {
+          const updated = prev.map(p => p.id === id ? { ...p, projectInfo: { ...p.projectInfo, name: newName.trim() } } : p);
+          localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
+          if (dataSpaceId) saveProjectsToSupabase(updated, dataSpaceId, user?.id || '');
+          return updated;
+        });
         if (activeProjectId === id) {
           setProjectInfo(prev => ({ ...prev, name: newName.trim() }));
         }
@@ -308,13 +381,33 @@ export default function App() {
       if (!deletedFolder) return;
       
       const previousProjectIdsInFolder = projects.filter(p => p.folderId === id).map(p => p.id);
-
-      setFolders(prev => prev.filter(f => f.id !== id));
-      setProjects(prev => prev.map(p => p.folderId === id ? { ...p, folderId: null } : p));
-
+      
+      setFolders(prev => {
+        const updated = prev.filter(f => f.id !== id).map(f => f.parentId === id ? { ...f, parentId: undefined } : f);
+        localStorage.setItem('betong_folders', JSON.stringify(updated));
+        if (dataSpaceId) saveFoldersToSupabase(updated, dataSpaceId, user?.id || '');
+        return updated;
+      });
+      setProjects(prev => {
+        const updatedProj = prev.map(p => p.folderId === id ? { ...p, folderId: null } : p);
+        localStorage.setItem('betong_saved_projects', JSON.stringify(updatedProj));
+        if (dataSpaceId) saveProjectsToSupabase(updatedProj, dataSpaceId, user?.id || '');
+        return updatedProj;
+      });
+      
       showUndoToast(`Mapp '${deletedFolder.name}' borttagen`, () => {
-        setFolders(prev => [...prev, deletedFolder]);
-        setProjects(prev => prev.map(p => previousProjectIdsInFolder.includes(p.id) ? { ...p, folderId: id } : p));
+        setFolders(prev => {
+          const updated = [...prev, deletedFolder];
+          localStorage.setItem('betong_folders', JSON.stringify(updated));
+          if (dataSpaceId) saveFoldersToSupabase(updated, dataSpaceId, user?.id || '');
+          return updated;
+        });
+        setProjects(prev => {
+          const updatedProj = prev.map(p => previousProjectIdsInFolder.includes(p.id) ? { ...p, folderId: id } : p);
+          localStorage.setItem('betong_saved_projects', JSON.stringify(updatedProj));
+          if (dataSpaceId) saveProjectsToSupabase(updatedProj, dataSpaceId, user?.id || '');
+          return updatedProj;
+        });
         setUndoToast(null);
       });
     });
@@ -322,10 +415,10 @@ export default function App() {
 
   useEffect(() => {
     // Check if county/country is different for traktamente
-    const projLan = projectInfo.lan.trim().toLowerCase();
-    const projLand = projectInfo.land.trim().toLowerCase();
-    const compLan = companyInfo.lan.trim().toLowerCase();
-    const compLand = companyInfo.land.trim().toLowerCase();
+    const projLan = (projectInfo.lan || '').trim().toLowerCase();
+    const projLand = (projectInfo.land || '').trim().toLowerCase();
+    const compLan = (companyInfo.lan || '').trim().toLowerCase();
+    const compLand = (companyInfo.land || '').trim().toLowerCase();
 
     if (projLan && compLan && projLand && compLand) {
       if (projLan !== compLan || projLand !== compLand) {
@@ -569,8 +662,8 @@ export default function App() {
            const typeLabel = row['Typ'] || row['Type'] || '';
            let type = '24.1_Fundament';
            const matchedType = INITIAL_TIDSFAKTORER.find(t => 
-             typeLabel && (t.type.toLowerCase().includes(typeLabel.toLowerCase()) || 
-             t.label.toLowerCase().includes(typeLabel.toLowerCase()))
+             typeLabel && ((t.type || '').toLowerCase().includes(typeLabel.toLowerCase()) || 
+             (t.label || '').toLowerCase().includes(typeLabel.toLowerCase()))
            );
            if (matchedType) type = matchedType.type;
 
@@ -773,6 +866,8 @@ export default function App() {
       const next = [...prev];
       const [moved] = next.splice(dragIndex, 1);
       next.splice(dropIndex, 0, moved);
+      localStorage.setItem('betong_folders', JSON.stringify(next));
+      if (dataSpaceId) saveFoldersToSupabase(next, dataSpaceId, user?.id || '');
       return next;
     });
   };
@@ -841,14 +936,33 @@ export default function App() {
     }));
   };
 
-  const reorderFolders = (dragId: string, dropId: string) => {
+  const reorderFolders = (dragId: string, targetParentId: string) => {
     setFolders(prev => {
       const dragIndex = prev.findIndex(f => f.id === dragId);
-      const dropIndex = prev.findIndex(f => f.id === dropId);
-      if (dragIndex < 0 || dropIndex < 0) return prev;
+      if (dragIndex < 0) return prev;
+      
+      if (dragId === targetParentId) return prev;
+      
+      let isCircular = false;
+      let curr = targetParentId;
+      while (curr) {
+        if (curr === dragId) {
+          isCircular = true;
+          break;
+        }
+        const p = prev.find(f => f.id === curr);
+        curr = p?.parentId || '';
+      }
+      
+      if (isCircular) return prev;
+      
       const next = [...prev];
-      const [moved] = next.splice(dragIndex, 1);
-      next.splice(dropIndex, 0, moved);
+      const moved = { ...next[dragIndex] };
+      moved.parentId = targetParentId || undefined;
+      next[dragIndex] = moved;
+      
+      localStorage.setItem('betong_folders', JSON.stringify(next));
+      if (dataSpaceId) saveFoldersToSupabase(next, dataSpaceId, user?.id || '');
       return next;
     });
   };
@@ -866,11 +980,13 @@ export default function App() {
         if (dropIndex >= 0) {
            next.splice(dropIndex, 0, moved);
            localStorage.setItem('betong_saved_projects', JSON.stringify(next));
+           if (dataSpaceId) saveProjectsToSupabase(next, dataSpaceId, user?.id || '');
            return next;
         }
       }
       next.push(moved);
       localStorage.setItem('betong_saved_projects', JSON.stringify(next));
+      if (dataSpaceId) saveProjectsToSupabase(next, dataSpaceId, user?.id || '');
       return next;
     });
   };
@@ -1135,12 +1251,12 @@ export default function App() {
   };
 
   if (!authInitialized || profileLoading) {
-    return <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center"><div className="w-8 h-8 border-4 border-[var(--blue)] border-t-transparent rounded-full animate-spin"></div></div>;
+    return <div className="min-h-[100dvh] bg-[var(--bg)] flex items-center justify-center"><div className="w-8 h-8 border-4 border-[var(--blue)] border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-4" style={{
+      <div className="min-h-[100dvh] bg-[var(--bg)] flex items-center justify-center p-4" style={{
         backgroundImage: 'linear-gradient(135deg, var(--blue-lt) 0%, var(--bg) 100%)'
       }}>
         <div className="bg-white p-10 rounded-2xl shadow-2xl border border-[var(--border)] max-w-md w-full text-center transform transition-all hover:scale-[1.01]">
@@ -1207,7 +1323,7 @@ export default function App() {
 
   if (accessDenied) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-4">
+      <div className="min-h-[100dvh] bg-[var(--bg)] flex items-center justify-center p-4">
         <div className="bg-white p-10 rounded-2xl shadow-xl text-center max-w-md w-full">
             <h1 className="text-2xl font-bold text-red-600 mb-4">Åtkomst nekad</h1>
             <p className="text-gray-600 mb-8">
@@ -1230,7 +1346,7 @@ export default function App() {
 
   if (needsOnboarding && user) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-4">
+      <div className="min-h-[100dvh] bg-[var(--bg)] flex items-center justify-center p-4">
         <div className="bg-white p-10 rounded-2xl shadow-xl text-center max-w-md w-full">
             <h1 className="text-2xl font-bold text-gray-800 mb-4">Välkommen!</h1>
             <p className="text-gray-600 mb-8">
@@ -1289,7 +1405,7 @@ export default function App() {
   if (appMode === 'admin') {
     if (!isPlatformAdmin) {
       return (
-        <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-4">
+        <div className="min-h-[100dvh] bg-surface flex flex-col items-center justify-center p-4">
           <div className="bg-surface-container-lowest p-8 rounded-2xl border border-outline-variant max-w-md w-full text-center shadow-lg">
             <span className="material-symbols-outlined text-[48px] text-status-error mb-4">gpp_bad</span>
             <h1 className="text-2xl font-bold text-on-surface mb-2">Behörighet saknas</h1>
@@ -1321,7 +1437,7 @@ export default function App() {
     }
 
     return (
-      <div className="min-h-screen bg-background text-on-background font-sans flex flex-col h-screen overflow-hidden">
+      <div className="min-h-[100dvh] bg-background text-on-background font-sans flex flex-col h-[100dvh] overflow-hidden">
         <header className="bg-surface border-b border-outline-variant h-16 px-4 md:px-8 flex items-center justify-between sticky top-0 z-50 text-on-surface">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="w-8 h-8 rounded-lg bg-surface-container-highest border border-outline-variant flex items-center justify-center text-primary font-extrabold text-sm">A</div>
@@ -1334,41 +1450,41 @@ export default function App() {
             </button>
           </div>
         </header>
-        <div className="flex-1 flex overflow-hidden">
-             <div className="w-1/5 bg-gray-50 border-r border-gray-200 p-4 space-y-4">
-                <nav className="flex flex-col gap-1">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+             <div className="w-full md:w-64 shrink-0 bg-gray-50 border-b md:border-r border-gray-200 p-2 md:p-4 space-y-2 md:space-y-4">
+                <nav className="flex flex-row md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0">
                    <button 
-                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors ${adminSubTab === 'oversikt' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 md:gap-3 shrink-0 whitespace-nowrap transition-colors ${adminSubTab === 'oversikt' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                       onClick={() => setAdminSubTab('oversikt')}
                    >
                       <i className="fa-solid fa-house w-5 text-center"></i> Översikt
                    </button>
                    <button 
-                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors ${adminSubTab === 'analys' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 md:gap-3 shrink-0 whitespace-nowrap transition-colors ${adminSubTab === 'analys' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                       onClick={() => setAdminSubTab('analys')}
                    >
                       <i className="fa-solid fa-chart-line w-5 text-center"></i> Analys
                    </button>
                    <button 
-                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors text-[var(--blue-d)] ${adminSubTab === 'kunder' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 md:gap-3 shrink-0 whitespace-nowrap transition-colors text-[var(--blue-d)] ${adminSubTab === 'kunder' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                       onClick={() => setAdminSubTab('kunder')}
                    >
                       <i className="fa-solid fa-building w-5 text-center"></i> Företag & Kunder
                    </button>
                    <button 
-                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors ${adminSubTab === 'register' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 md:gap-3 shrink-0 whitespace-nowrap transition-colors ${adminSubTab === 'register' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                       onClick={() => setAdminSubTab('register')}
                    >
                       <i className="fa-solid fa-database w-5 text-center"></i> Standardregister
                    </button>
                    <button 
-                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors ${adminSubTab === 'fakturor' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 md:gap-3 shrink-0 whitespace-nowrap transition-colors ${adminSubTab === 'fakturor' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                       onClick={() => setAdminSubTab('fakturor')}
                    >
                       <i className="fa-solid fa-file-invoice w-5 text-center"></i> Fakturor
                    </button>
                    <button 
-                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-3 transition-colors ${adminSubTab === 'installningar' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                      className={`text-left px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 md:gap-3 shrink-0 whitespace-nowrap transition-colors ${adminSubTab === 'installningar' ? 'bg-[var(--blue-lt)] text-[var(--blue)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
                       onClick={() => setAdminSubTab('installningar')}
                    >
                       <i className="fa-solid fa-gear w-5 text-center"></i> Inställningar
@@ -1376,7 +1492,7 @@ export default function App() {
                 </nav>
                 <div className="pt-6 border-t border-gray-200 mt-6">
                    <button 
-                     className="w-full text-left px-3 py-2 rounded-lg text-blue-600 hover:bg-blue-50 focus:bg-blue-50 font-medium text-sm flex items-center gap-3 transition-colors"
+                     className="w-full text-left px-3 py-2 rounded-lg text-blue-600 hover:bg-blue-50 focus:bg-blue-50 font-medium text-sm flex items-center gap-2 md:gap-3 shrink-0 whitespace-nowrap transition-colors"
                      onClick={() => {
                         localStorage.setItem('betong_app_mode', 'kalkyl');
                         setAppMode('kalkyl');
@@ -1437,7 +1553,7 @@ export default function App() {
           reorderByggdelar, removePart, removeMultipleParts, updateMultipleParts, clonePart, togglePartActive, toggleTypeActive,
           cloneType, openModal, updateMoment, duplicateMoment, updateMaterialPrice, addMoment, removeMoment, updatePartQty, updatePartAntal
         }}>
-          <div className="min-h-screen bg-background text-on-background font-sans flex flex-col h-screen overflow-hidden">
+          <div className="min-h-[100dvh] bg-background text-on-background font-sans flex flex-col h-[100dvh] overflow-hidden">
             <Header
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
@@ -1464,12 +1580,15 @@ export default function App() {
             handleImportExcel={handleImportExcel}
             handleExportExcel={handleExportExcel}
             downloadTemplate={downloadTemplate}
+            saveSnapshot={saveSnapshot}
+            openSnapshotModal={() => setSnapshotModalOpen(true)}
           />
 
           <div className="flex-1 relative flex min-w-0 min-h-0">
             <main className={`flex-1 relative flex flex-col min-w-0 min-h-0 ${['kalkyl', 'pdf'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'} print:overflow-visible bg-surface-container-lowest`}>
         <TabRouter 
           activeTab={activeTab}
+          setActiveTab={setActiveTab}
           user={user}
           profile={profile}
           refreshProfile={refreshProfile}
@@ -1493,57 +1612,77 @@ export default function App() {
           currentProject={projects.find(p => p.id === activeProjectId)}
           saveVersion={(name) => {
             logEvent('calc_saved', { projectId: activeProjectId, versionName: name });
-            setProjects(prev => prev.map(p => {
-              if (p.id === activeProjectId) {
-                return { 
-                  ...p, 
-                  versions: [...(p.versions || []), { id: 'v_' + Date.now(), name, timestamp: new Date().toISOString(), byggdelar: [...byggdelar] }],
-                  activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Sparade version', details: `Version "${name}" skapades` }, ...(p.activityLogs || [])]
-                };
-              }
-              return p;
-            }));
+            setProjects(prev => {
+              const updated = prev.map(p => {
+                if (p.id === activeProjectId) {
+                  return { 
+                    ...p, 
+                    versions: [...(p.versions || []), { id: 'v_' + Date.now(), name, timestamp: new Date().toISOString(), byggdelar: [...byggdelar] }],
+                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Sparade version', details: `Version "${name}" skapades` }, ...(p.activityLogs || [])]
+                  };
+                }
+                return p;
+              });
+              localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
+              if (dataSpaceId) saveProjectsToSupabase(updated, dataSpaceId, user?.id || '');
+              return updated;
+            });
             showNotification("Version sparad", "success");
           }}
           loadVersion={(version) => {
             setByggdelar(version.byggdelar);
-            setProjects(prev => prev.map(p => {
-              if (p.id === activeProjectId) {
-                return {
-                  ...p,
-                  activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Laddade version', details: `Återställde till version "${version.name}"` }, ...(p.activityLogs || [])]
-                };
-              }
-              return p;
-            }));
+            setProjects(prev => {
+              const updated = prev.map(p => {
+                if (p.id === activeProjectId) {
+                  return {
+                    ...p,
+                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Laddade version', details: `Återställde till version "${version.name}"` }, ...(p.activityLogs || [])]
+                  };
+                }
+                return p;
+              });
+              localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
+              if (dataSpaceId) saveProjectsToSupabase(updated, dataSpaceId, user?.id || '');
+              return updated;
+            });
             showNotification("Version läst in: " + version.name, "success");
           }}
           deleteVersion={(vId) => {
             confirmAction("Ta bort version", "Är du säker på att du vill ta bort denna version?", () => {
-              setProjects(prev => prev.map(p => {
-                if (p.id === activeProjectId) {
-                  const vName = p.versions?.find(v => v.id === vId)?.name || 'Okänd';
-                  return { 
-                    ...p, 
-                    versions: p.versions?.filter(v => v.id !== vId),
-                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Tog bort version', details: `Version "${vName}" raderades` }, ...(p.activityLogs || [])]
-                  };
-                }
-                return p;
-              }));
+              setProjects(prev => {
+                const updated = prev.map(p => {
+                  if (p.id === activeProjectId) {
+                    const vName = p.versions?.find(v => v.id === vId)?.name || 'Okänd';
+                    return { 
+                      ...p, 
+                      versions: p.versions?.filter(v => v.id !== vId),
+                      activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action: 'Tog bort version', details: `Version "${vName}" raderades` }, ...(p.activityLogs || [])]
+                    };
+                  }
+                  return p;
+                });
+                localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
+                if (dataSpaceId) saveProjectsToSupabase(updated, dataSpaceId, user?.id || '');
+                return updated;
+              });
               showNotification("Version borttagen", "info");
             });
           }}
           addActivityLog={(action, details) => {
-            setProjects(prev => prev.map(p => {
-              if (p.id === activeProjectId) {
-                return {
-                  ...p,
-                  activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action, details }, ...(p.activityLogs || [])]
-                };
-              }
-              return p;
-            }));
+            setProjects(prev => {
+              const updated = prev.map(p => {
+                if (p.id === activeProjectId) {
+                  return {
+                    ...p,
+                    activityLogs: [{ id: 'al_' + Date.now(), timestamp: new Date().toISOString(), action, details }, ...(p.activityLogs || [])]
+                  };
+                }
+                return p;
+              });
+              localStorage.setItem('betong_saved_projects', JSON.stringify(updated));
+              if (dataSpaceId) saveProjectsToSupabase(updated, dataSpaceId, user?.id || '');
+              return updated;
+            });
           }}
           byggdelar={byggdelar}
           dataSpaceId={dataSpaceId}

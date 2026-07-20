@@ -1,0 +1,16 @@
+{
+  "name": "Estimo - Projektunderlag",
+  "short_name": "Estimo",
+  "description": "Applikation f\u00f6r byggkalkyler, FFU och projektunderlag",
+  "start_url": "/ffu",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1f2937",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

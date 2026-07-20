@@ -784,9 +784,9 @@ NOTIFY pgrst, 'reload schema';
   }
 
   return (
-    <div className="p-6 w-[1200px] max-w-full mx-auto flex flex-col relative">
+    <div className="p-4 md:p-6 w-full max-w-7xl mx-auto flex flex-col relative">
       {renderDbWarning()}
-      <div className="flex gap-6 w-full">
+      <div className="flex flex-col lg:flex-row gap-6 w-full">
       {/* Notifications */}
       {notification && (
         <div
@@ -832,7 +832,7 @@ NOTIFY pgrst, 'reload schema';
       )}
 
       {/* Companies List */}
-      <div className="w-[550px] flex-shrink-0 bg-white border border-[var(--border)] rounded-lg p-5 shadow-sm">
+      <div className="w-full lg:w-[550px] flex-shrink-0 bg-white border border-[var(--border)] rounded-lg p-5 shadow-sm">
         <h2 className="text-xl font-bold text-gray-800 border-b pb-3 mb-4">
           <i className="fa-solid fa-building mr-2 text-[var(--blue)]"></i>
           Företag
@@ -1001,7 +1001,7 @@ NOTIFY pgrst, 'reload schema';
       </div>
 
       {/* Users List */}
-      <div className="w-[550px] flex-shrink-0 bg-white border border-[var(--border)] rounded-lg p-5 shadow-sm flex flex-col">
+      <div className="w-full lg:w-[550px] flex-shrink-0 bg-white border border-[var(--border)] rounded-lg p-5 shadow-sm flex flex-col">
         <h2 className="text-xl font-bold text-gray-800 border-b pb-3 mb-4 flex justify-between items-center">
           <div>
             <i className="fa-solid fa-users mr-2 text-[var(--blue)]"></i>

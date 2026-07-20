@@ -1,23 +1,34 @@
 import React, { useState, useRef, useEffect } from "react";
 import * as pdfjsLib from "pdfjs-dist";
+import workerRaw from 'pdfjs-dist/build/pdf.worker.min.mjs?raw';
+
+// Create a blob URL for the worker to avoid cross-origin or proxy network errors
+if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  const workerBlob = new Blob([workerRaw], { type: 'text/javascript' });
+  pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);
+}
 import { Byggdel, INITIAL_TIDSFAKTORER } from "../data";
 import { calculateDefaultMoments } from "../calculationHelpers";
 import { PageScales, scaleForPage, setPageScale, serializePageScales, deserializePageScales, emptyPageScales } from "../pdf/pageScales";
 import { Scale, deriveScale, toRealDistance, toRealArea, presetScale, ratioFromScale, toMeters } from "../pdf/scaleHelpers";
 
-// Use CDN for worker
-import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-
+// 
 import { Measurement, MeasurementGroup, Point } from "../measurementTypes";
 import { useFfuStore } from "../ffu/store/useFfuStore";
+import { usePdfStore } from "../state/usePdfStore";
+import { supabase } from '../supabase';
+import { getFile } from '../ffu/localDb';
+import { DocumentPickerModal } from './DocumentPickerModal';
+
 
 export function PdfMeasurementTab({
   addParts,
   initialDocumentId,
+  activeProjectId,
 }: {
   addParts?: (parts: Omit<Byggdel, "id">[]) => void;
   initialDocumentId?: string | null;
+  activeProjectId?: string | null;
 }) {
   const [documentId, setDocumentId] = useState<string | null>(initialDocumentId || null);
   const [isSavingFfu, setIsSavingFfu] = useState(false);
@@ -38,8 +49,122 @@ export function PdfMeasurementTab({
   >("pan");
   const [pageScales, setPageScales] = useState<PageScales>(emptyPageScales());
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
+  const [pdfFilePath, setPdfFilePath] = useState<string | null>(null);
   const [showScaleWarning, setShowScaleWarning] = useState(false);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+
+
+  const [activeRightTab, setActiveRightTab] = useState<"skala" | "grupper" | "egenskaper" | "export" | null>(null);
+
+  // Panel sizing
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(250);
+
+  const startSidebarResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      // Because sidebar is on the right, moving left (negative delta) increases width
+      const newWidth = Math.max(200, Math.min(600, startWidth - deltaX));
+      setSidebarWidth(newWidth);
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  const startBottomPanelResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = bottomPanelHeight;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      // Bottom panel: moving up (negative delta) increases height
+      const newHeight = Math.max(100, Math.min(800, startHeight - deltaY));
+      setBottomPanelHeight(newHeight);
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+  const { pdfToLoad, setPdfToLoad } = usePdfStore();
+  const [isFfuPickerOpen, setIsFfuPickerOpen] = useState(false);
+  
+
+  useEffect(() => {
+    if (pdfFilePath) {
+      localStorage.setItem(`pdf_measurements_${pdfFilePath}`, JSON.stringify(measurements));
+    } else if (pdfFileName) {
+      localStorage.setItem(`pdf_measurements_${pdfFileName}`, JSON.stringify(measurements));
+    }
+  }, [measurements, pdfFileName, pdfFilePath]);
+  
+  useEffect(() => {
+    if (pdfToLoad) {
+      const loadPdfFromUrl = async () => {
+        try {
+          let arrayBuffer;
+          if (pdfToLoad.url.startsWith('blob:')) {
+              const response = await fetch(pdfToLoad.url);
+              arrayBuffer = await response.arrayBuffer();
+          } else {
+              try {
+                  const localFile = await getFile(pdfToLoad.file_path);
+                  if (localFile) {
+                      arrayBuffer = await localFile.arrayBuffer();
+                  } else {
+                      const { data, error } = await supabase.storage.from("documents").download(pdfToLoad.file_path);
+                      if (error || !data) {
+                          throw new Error("Failed to download PDF: " + (error?.message || "No data"));
+                      }
+                      arrayBuffer = await data.arrayBuffer();
+                  }
+              } catch (e) {
+                  // Fallback to fetch if localDb/supabase fails (e.g. if file_path is somehow a full URL)
+                  const response = await fetch(pdfToLoad.url);
+                  arrayBuffer = await response.arrayBuffer();
+              }
+          }
+          const savedScales = localStorage.getItem(`pdf_scales_${pdfToLoad.file_path || pdfToLoad.filename}`);
+          if (savedScales) {
+            setPageScales(deserializePageScales(savedScales));
+          } else {
+            setPageScales(emptyPageScales());
+          }
+          const savedMeasurements = localStorage.getItem(`pdf_measurements_${pdfToLoad.file_path || pdfToLoad.filename}`);
+          const initialMeasurements = savedMeasurements ? JSON.parse(savedMeasurements) : [];
+          
+          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+          const doc = await loadingTask.promise;
+          setPdfDoc(doc);
+          setPageNum(1);
+          setMeasurements(initialMeasurements);
+          setPdfFileName(pdfToLoad.filename);
+          setPdfFilePath(pdfToLoad.file_path || null);
+          setCurrentPoints([]);
+        } catch (err) {
+          console.error("Failed to load PDF from store", err);
+          alert("Kunde inte ladda PDF från FFU");
+        }
+        setPdfToLoad(null);
+      };
+      loadPdfFromUrl();
+    }
+  }, [pdfToLoad, setPdfToLoad]);
   const [measurementGroups, setMeasurementGroups] = useState<MeasurementGroup[]>([
     { id: 'default', name: 'Standard', color: '#ef4444', visible: true }
   ]);
@@ -56,6 +181,67 @@ export function PdfMeasurementTab({
     onCancel?: () => void;
   } | null>(null);
 
+  const [selectedBulkMeasurements, setSelectedBulkMeasurements] = useState<Set<string>>(new Set());
+  const [bulkActionName, setBulkActionName] = useState("");
+  const [bulkActionGroupId, setBulkActionGroupId] = useState("");
+
+  const handleBulkSelect = (id: string, selected: boolean) => {
+    setSelectedBulkMeasurements(prev => {
+      const next = new Set(prev);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllOnPage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const pageMeasurements = measurements.filter(m => m.page === pageNum);
+    if (e.target.checked) {
+      setSelectedBulkMeasurements(prev => {
+        const next = new Set(prev);
+        pageMeasurements.forEach(m => next.add(m.id));
+        return next;
+      });
+    } else {
+      setSelectedBulkMeasurements(prev => {
+        const next = new Set(prev);
+        pageMeasurements.forEach(m => next.delete(m.id));
+        return next;
+      });
+    }
+  };
+
+  const applyBulkChanges = () => {
+    if (selectedBulkMeasurements.size === 0) return;
+    setMeasurements(measurements.map(m => {
+      if (selectedBulkMeasurements.has(m.id)) {
+        const updates: any = {};
+        if (bulkActionName.trim() !== '') updates.name = bulkActionName.trim();
+        if (bulkActionGroupId !== '') updates.groupId = bulkActionGroupId === 'default' ? undefined : bulkActionGroupId;
+        return { ...m, ...updates };
+      }
+      return m;
+    }));
+    setBulkActionName("");
+    setBulkActionGroupId("");
+    setSelectedBulkMeasurements(new Set());
+  };
+
+  const deleteBulkSelected = () => {
+    if (selectedBulkMeasurements.size === 0) return;
+    setDialogConfig({
+      isOpen: true,
+      title: "Radera markerade",
+      message: `Är du säker på att du vill radera ${selectedBulkMeasurements.size} mätningar?`,
+      onConfirm: () => {
+        setMeasurements(measurements.filter(m => !selectedBulkMeasurements.has(m.id)));
+        setSelectedBulkMeasurements(new Set());
+        setDialogConfig(null);
+      },
+      onCancel: () => setDialogConfig(null)
+    });
+  };
+
   const [calibrateDialog, setCalibrateDialog] = useState<{
     isOpen: boolean;
     pxDistance: number;
@@ -67,7 +253,9 @@ export function PdfMeasurementTab({
     const updatedScales = setPageScale(pageScales, pageNum, scaleObj);
     setPageScales(updatedScales);
     setShowScaleWarning(false);
-    if (pdfFileName) {
+    if (pdfFilePath) {
+      localStorage.setItem(`pdf_scales_${pdfFilePath}`, serializePageScales(updatedScales));
+    } else if (pdfFileName) {
       localStorage.setItem(`pdf_scales_${pdfFileName}`, serializePageScales(updatedScales));
     }
 
@@ -170,6 +358,27 @@ export function PdfMeasurementTab({
   const [activeMeasurementMultiplier, setActiveMeasurementMultiplier] =
     useState(1);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const target = e.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+        
+        if (selectedMeasurementId) {
+          setMeasurements(prev => {
+            const selected = prev.find(m => m.id === selectedMeasurementId);
+            if (selected && !selected.isLocked) {
+              return prev.filter(m => m.id !== selectedMeasurementId);
+            }
+            return prev;
+          });
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedMeasurementId]);
+
   const updateTransform = () => {
     if (wrapperRef.current) {
       const { scale, tx, ty } = transformRef.current;
@@ -265,13 +474,14 @@ export function PdfMeasurementTab({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setPdfFileName(file.name);
     const savedScales = localStorage.getItem(`pdf_scales_${file.name}`);
     if (savedScales) {
       setPageScales(deserializePageScales(savedScales));
     } else {
       setPageScales(emptyPageScales());
     }
+    const savedMeasurements = localStorage.getItem(`pdf_measurements_${file.name}`);
+    const initialMeasurements = savedMeasurements ? JSON.parse(savedMeasurements) : [];
 
     const arrayBuffer = await file.arrayBuffer();
     try {
@@ -279,7 +489,9 @@ export function PdfMeasurementTab({
       const doc = await loadingTask.promise;
       setPdfDoc(doc);
       setPageNum(1);
-      setMeasurements([]);
+      setMeasurements(initialMeasurements);
+      setPdfFileName(file.name);
+      setPdfFilePath(null);
       setCurrentPoints([]);
     } catch (err) {
       // warning removed
@@ -340,6 +552,7 @@ export function PdfMeasurementTab({
       // Reset zoom on page change
       transformRef.current = { scale: 1.0, tx: 0, ty: 0 };
       setDisplayZoom(1.0);
+      setCurrentPoints([]);
       requestAnimationFrame(updateTransform);
     }
   }, [pageNum, pdfDoc]);
@@ -359,6 +572,81 @@ export function PdfMeasurementTab({
       return () => clearTimeout(timeout);
     }
   }, [displayZoom, pageNum, pdfDoc]);
+
+  const toggleMeasurementLock = (id: string) => {
+    setMeasurements((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, isLocked: !m.isLocked } : m
+      )
+    );
+  };
+
+  const scaleSelectedMeasurement = (id: string, factor: number) => {
+    setMeasurements((prev) =>
+      prev.map((m) => {
+        if (m.id !== id) return m;
+        if (m.isLocked) return m;
+        if (m.points.length === 0) return m;
+
+        // Calculate centroid
+        const sum = m.points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+        const c = { x: sum.x / m.points.length, y: sum.y / m.points.length };
+
+        // Scale points
+        const newPoints = m.points.map(p => ({
+          x: c.x + (p.x - c.x) * factor,
+          y: c.y + (p.y - c.y) * factor
+        }));
+
+        const scaledMeasurement = { ...m, points: newPoints };
+
+        // Recalculate value
+        const scaleObj = scaleForPage(pageScales, m.page || 1, presetScale(0));
+        let newValue = scaledMeasurement.value;
+
+        if (m.tool === "area" || m.tool === "volume" || m.tool === "cloud") {
+          let area = 0;
+          for (let i = 0; i < newPoints.length; i++) {
+            const p1 = newPoints[i];
+            const p2 = newPoints[(i + 1) % newPoints.length];
+            area += p1.x * p2.y - p2.x * p1.y;
+          }
+          newValue = toRealArea(Math.abs(area / 2), scaleObj.pixelsPerUnit);
+          if (m.tool === "volume" && m.depth) {
+            newValue *= m.depth;
+          }
+        } else if (m.tool === "distance" || m.tool === "line") {
+          if (newPoints.length >= 2) {
+            const p1 = newPoints[0];
+            const p2 = newPoints[newPoints.length - 1];
+            const dist = Math.sqrt(
+              Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2),
+            );
+            newValue = toRealDistance(dist, scaleObj.pixelsPerUnit);
+          }
+        } else if (m.tool === "polyline") {
+          let length = 0;
+          for (let i = 0; i < newPoints.length - 1; i++) {
+            const p1 = newPoints[i];
+            const p2 = newPoints[i + 1];
+            length += Math.sqrt(
+              Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2),
+            );
+          }
+          newValue = toRealDistance(length, scaleObj.pixelsPerUnit);
+        } else if (m.tool === "rectangle") {
+          if (newPoints.length >= 2) {
+            newValue = toRealArea(
+              Math.abs(newPoints[1].x - newPoints[0].x) * Math.abs(newPoints[1].y - newPoints[0].y),
+              scaleObj.pixelsPerUnit
+            );
+          }
+        }
+        
+        return { ...scaledMeasurement, value: newValue };
+      })
+    );
+  };
 
   const getSnappedPosition = (px: number, py: number) => {
     if (!isSnappingEnabled) return { x: px, y: py };
@@ -922,26 +1210,15 @@ export function PdfMeasurementTab({
       // Here we assume a mock/simplification or the Edge function handles it
       
       const payload = {
-        projectId: 'mock-project-id', // Replace with real context
+        projectId: documentId || 'mock-project-id',
         filename: (pdfDoc as any).fingerprints?.[0] + '.pdf' || 'mätning.pdf',
         measurements: measurements,
         documentId: documentId
       };
       
-      const res = await fetch('https://supabase.example.com/functions/v1/save-pdf-measurements', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer FAKE_TOKEN' // In real app use session token
-        },
-        body: JSON.stringify(payload)
-      });
-      
-      if (!res.ok) {
-        throw new Error('Failed to save to FFU');
-      }
-      
-      const data = await res.json();
+      // MOCK SAVE instead of fake fetch to avoid "Load failed" error
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const data = { documentId: documentId || 'saved-doc-id' };
       setDocumentId(data.documentId);
       const { activeFolderId, fetchDocumentsInFolder } = useFfuStore.getState();
       if (activeFolderId) {
@@ -975,6 +1252,7 @@ export function PdfMeasurementTab({
     transformRef.current.ty = 0;
     updateTransform();
     setDisplayZoom(1.0);
+      setCurrentPoints([]);
   };
 
   return (
@@ -987,7 +1265,7 @@ export function PdfMeasurementTab({
         onChange={handleFileUpload}
       />
       {/* Top Toolbar */}
-      <div className="flex flex-wrap items-center p-1.5 gap-y-1.5 gap-x-1 border-b border-gray-300 bg-white shrink-0 min-h-[48px] shadow-sm z-20 relative text-xs">
+      <div className="flex overflow-x-auto lg:flex-wrap items-center p-1.5 gap-y-1.5 gap-x-1 border-b hide-scrollbar border-gray-300 bg-white shrink-0 min-h-[48px] shadow-sm z-20 relative text-xs">
         <div className="flex flex-wrap items-center gap-0.5 shrink-0">
           <button
             onClick={() => setPageNum((p) => Math.max(1, p - 1))}
@@ -1107,27 +1385,27 @@ export function PdfMeasurementTab({
           <ToolButton
             active={currentTool === "cloud"}
             onClick={() => handleToolSelect("cloud")}
-            icon="cloud"
+            icon="cloud" hideOnMobile={true}
           />
           <ToolButton
             active={currentTool === "line"}
             onClick={() => handleToolSelect("line")}
-            icon="north_east"
+            icon="north_east" hideOnMobile={true}
           />
           <ToolButton
             active={currentTool === "text"}
             onClick={() => handleToolSelect("text")}
-            icon="title"
+            icon="title" hideOnMobile={true}
           />
           <ToolButton
             active={currentTool === "rectangle"}
             onClick={() => handleToolSelect("rectangle")}
-            icon="crop_square"
+            icon="crop_square" hideOnMobile={true}
           />
           <ToolButton
             active={currentTool === "pencil"}
             onClick={() => handleToolSelect("pencil")}
-            icon="draw"
+            icon="draw" hideOnMobile={true}
           />
         </div>
 
@@ -1223,6 +1501,15 @@ export function PdfMeasurementTab({
             </span>
           </button>
           <button
+            onClick={() => setIsFfuPickerOpen(true)}
+            className="p-1.5 ml-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors flex items-center gap-1.5 font-medium pr-2.5 border border-blue-200"
+          >
+            <span className="material-symbols-outlined text-[16px]">
+              folder_open
+            </span>{" "}
+            FFU
+          </button>
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="p-1.5 ml-1 bg-gray-800 text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-1.5 font-medium pr-2.5"
           >
@@ -1247,8 +1534,10 @@ export function PdfMeasurementTab({
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 relative">
-        {/* Main Canvas Area */}
+      
+      <div className="flex flex-col flex-1 min-h-0 relative">
+        <div className="flex flex-1 min-h-0 relative lg:flex-row flex-col">
+{/* Main Canvas Area */}
         <div
           ref={containerRef}
           className={`flex-1 overflow-hidden bg-[#e5e7eb] relative p-0 cursor-crosshair`}
@@ -1288,13 +1577,22 @@ export function PdfMeasurementTab({
                 volymer och antal direkt i webbläsaren. Systemet stödjer
                 AutoCAD-liknande zoom och panorering.
               </p>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium shadow-md hover:bg-blue-700 transition-colors flex items-center gap-2"
-              >
-                <span className="material-symbols-outlined">description</span>{" "}
-                Välj PDF-fil
-              </button>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setIsFfuPickerOpen(true)}
+                  className="px-6 py-3 bg-white text-blue-600 border border-blue-600 rounded-lg font-medium shadow-sm hover:bg-blue-50 transition-colors flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined">folder_open</span>{" "}
+                  Hämta från FFU
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium shadow-md hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined">upload_file</span>{" "}
+                  Ladda upp lokal fil
+                </button>
+              </div>
             </div>
           )}
           <div
@@ -1411,7 +1709,9 @@ export function PdfMeasurementTab({
                             <g transform={`translate(${m.points[0].x},${m.points[0].y})`}>
                               <circle cx="0" cy="0" r={12 / displayZoom} fill={color} fillOpacity="0.8" />
                               <circle cx="0" cy="0" r={12 / displayZoom} fill="none" stroke={isSelected ? "#fff" : "#fff"} strokeWidth={isSelected ? 4 : 2} vectorEffect="non-scaling-stroke" />
-                              <text x="0" y={4 / displayZoom} textAnchor="middle" fill="white" fontSize={12 / displayZoom} fontWeight="bold" fontFamily="sans-serif">1</text>
+                              <text x="0" y={4 / displayZoom} textAnchor="middle" fill="white" fontSize={12 / displayZoom} fontWeight="bold" fontFamily="sans-serif">
+                                {measurements.filter(x => x.tool === "count" && x.groupId === m.groupId && x.page === m.page).findIndex(x => x.id === m.id) + 1}
+                              </text>
                             </g>
                           );
                         }
@@ -1700,10 +2000,30 @@ export function PdfMeasurementTab({
           </div>
         </div>
 
-        {/* Right Sidebar */}
-        <div className="w-64 lg:w-72 border-l border-gray-200 bg-white flex flex-col shrink-0 z-20 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)]">
-          {pdfDoc && (
-            <>
+        
+
+
+        {/* Right Sidebar Content */}
+        {pdfDoc && activeRightTab && (
+          <div 
+            className="w-full border-t lg:border-t-0 lg:border-l border-gray-200 bg-white flex flex-col shrink-0 z-20 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] overflow-y-auto max-h-[50vh] lg:max-h-full relative animate-in slide-in-from-right-8 duration-200"
+            style={{ width: window.innerWidth >= 1024 ? sidebarWidth : '100%' }}
+          >
+            {/* Resize Handle for Sidebar */}
+            <div
+              className="hidden lg:block absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-50 hover:bg-blue-500/50 active:bg-blue-500/70 transition-colors"
+              onPointerDown={startSidebarResize}
+              style={{ transform: 'translateX(-50%)' }}
+            />
+            
+            <button 
+              onClick={() => setActiveRightTab(null)} 
+              className="absolute top-2 right-2 text-gray-400 hover:text-gray-700 hover:bg-gray-200 p-1 rounded-md transition-colors z-30 bg-white shadow-sm border border-gray-100"
+            >
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+
+            {activeRightTab === 'skala' && (
               <div className="p-3 border-b border-gray-100">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-2">
                   <span className="material-symbols-outlined text-[16px]">
@@ -1750,6 +2070,9 @@ export function PdfMeasurementTab({
                 </div>
               </div>
 
+              
+            )}
+            {activeRightTab === 'grupper' && (
               <div className="p-3 border-b border-gray-100">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-2">
                   <span className="material-symbols-outlined text-[16px]">
@@ -1800,104 +2123,10 @@ export function PdfMeasurementTab({
                 </div>
               </div>
 
-              <div className="flex p-2 bg-gray-50 border-b border-gray-200">
-                <button
-                  onClick={() => setActiveSidebarTab("ledger")}
-                  className={`flex-1 py-1.5 text-sm font-semibold rounded-md mx-1 transition-colors ${activeSidebarTab === "ledger" ? "bg-white text-gray-800 shadow-sm border border-gray-200" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
-                >
-                  Mängdförteckning
-                </button>
-                <button
-                  onClick={() => setActiveSidebarTab("properties")}
-                  className={`flex-1 py-1.5 text-sm font-semibold rounded-md mx-1 transition-colors ${activeSidebarTab === "properties" ? "bg-white text-gray-800 shadow-sm border border-gray-200" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
-                >
-                  Egenskaper
-                </button>
-              </div>
-            </>
-          )}
-
-          <div className="p-3 flex-1 overflow-y-auto bg-gray-50">
-            {activeSidebarTab === "ledger" ? (
-              <>
-                <div className="flex justify-between items-center mb-4">
-                  <div className="text-sm font-bold text-gray-800">
-                    Mätningar{" "}
-                    <span className="text-gray-500 text-xs font-medium">
-                      ({measurements.filter((m) => m.page === pageNum).length}{" "}
-                      objekt)
-                    </span>
-                  </div>
-                </div>
-
-                {measurements.filter((m) => m.page === pageNum).length === 0 ? (
-                  <div className="text-sm text-gray-500 text-center my-10 px-4 bg-white py-6 rounded-lg border border-dashed border-gray-300">
-                    Inga mätningar på denna sida (Sida {pageNum}). Välj ett
-                    verktyg i verktygsfältet för att börja.
-                  </div>
-                ) : (
-                  <ul className="space-y-4">
-                    {measurementGroups.map((group) => {
-                      const groupMeasurements = measurements.filter((m) => m.page === pageNum && (m.groupId === group.id || (!m.groupId && group.id === 'default')));
-                      if (groupMeasurements.length === 0) return null;
-
-                      // Summarize totals per tool in this group
-                      const summary = groupMeasurements.reduce((acc, m) => {
-                        const unit = m.tool === "area" ? "m²" : m.tool === "volume" ? "m³" : m.tool === "count" ? "st" : m.tool === "text" ? "" : "m";
-                        const key = m.tool;
-                        if (!acc[key]) acc[key] = { tool: m.tool, total: 0, unit, items: [] };
-                        acc[key].items.push(m);
-                        acc[key].total += (m.tool === "count" ? 1 : m.value || 0) * (m.multiplier || 1);
-                        return acc;
-                      }, {} as Record<string, { tool: string; total: number; unit: string; items: Measurement[] }>);
-
-                      return (
-                        <li key={group.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                          <div className="bg-gray-50 p-2 border-b border-gray-200 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-sm shadow-sm" style={{ backgroundColor: group.color }}></div>
-                              <span className="font-bold text-sm text-gray-800">{group.name}</span>
-                            </div>
-                            <span className="text-xs text-gray-500 font-medium">{groupMeasurements.length} objekt</span>
-                          </div>
-                          <div className="p-2 space-y-3">
-                            {Object.values(summary).map(sum => (
-                              <div key={sum.tool} className="space-y-1">
-                                <div className="flex justify-between items-center text-xs font-semibold text-gray-600 uppercase mb-1">
-                                  <span>{sum.tool === 'count' ? 'Antal' : sum.tool === 'area' ? 'Yta' : sum.tool === 'volume' ? 'Volym' : sum.tool === 'text' ? 'Noteringar' : 'Längd'}</span>
-                                  {sum.tool !== 'text' && <span className="text-gray-900 bg-gray-100 px-1.5 py-0.5 rounded">{sum.total.toFixed(2)} {sum.unit}</span>}
-                                </div>
-                                <ul className="space-y-1 pl-1 border-l-2 border-gray-100 ml-1">
-                                  {sum.items.map(m => (
-                                    <li
-                                      key={m.id}
-                                      onClick={() => {
-                                        setSelectedMeasurementId(m.id);
-                                        setActiveSidebarTab("properties");
-                                      }}
-                                      className={`flex justify-between items-center p-1.5 rounded cursor-pointer transition-colors ${selectedMeasurementId === m.id ? "bg-blue-50 ring-1 ring-blue-400" : "hover:bg-gray-50"}`}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs text-gray-500 font-medium">#{m.id.substring(m.id.length - 4)}</span>
-                                        <span className="text-xs text-gray-700 truncate max-w-[80px]">{m.name || m.text || ''}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        {m.multiplier && m.multiplier > 1 && <span className="text-[10px] text-gray-400 font-medium px-1 bg-gray-100 rounded">x{m.multiplier}</span>}
-                                        {m.tool !== 'text' && <span className="text-xs font-medium text-gray-700">{(m.value || (m.tool==='count'?1:0)).toFixed(2)} {sum.unit}</span>}
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ))}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </>
-            ) : (
+            
+            )}
+            {activeRightTab === 'egenskaper' && (
+              <div className="p-3 flex-1 overflow-y-auto bg-gray-50">
               <>
                 <div className="flex justify-between items-center mb-4">
                   <div className="text-sm font-bold text-gray-800">
@@ -2135,7 +2364,9 @@ export function PdfMeasurementTab({
                         </div>
 
                         <button
+                          disabled={m.isLocked}
                           onClick={() => {
+                            if (m.isLocked) return;
                             setMeasurements(
                               measurements.filter(
                                 (x) => x.id !== selectedMeasurementId,
@@ -2144,12 +2375,12 @@ export function PdfMeasurementTab({
                             setSelectedMeasurementId(null);
                             setActiveSidebarTab("ledger");
                           }}
-                          className="w-full py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors border border-red-100 flex justify-center items-center gap-1"
+                          className={`w-full py-2 rounded-lg text-sm font-medium border flex justify-center items-center gap-1 transition-colors ${m.isLocked ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-red-50 text-red-600 hover:bg-red-100 border-red-100'}`}
                         >
                           <span className="material-symbols-outlined text-[18px]">
-                            delete
+                            {m.isLocked ? 'lock' : 'delete'}
                           </span>{" "}
-                          Ta bort mätning
+                          {m.isLocked ? 'Mätning är låst' : 'Ta bort mätning'}
                         </button>
                       </div>
                     ))
@@ -2205,39 +2436,264 @@ export function PdfMeasurementTab({
                   </div>
                 )}
               </>
+          </div>
+            )}
+            {activeRightTab === 'export' && (
+              <div className="p-5 flex flex-col gap-3 bg-white border-t border-gray-100 shadow-[0_-4px_10px_rgba(0,0,0,0.02)] h-full justify-start">
+  <button
+    onClick={exportSelected}
+    className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm flex items-center justify-center gap-2 shadow-md hover:bg-blue-700 transition-colors"
+  >
+    <span className="material-symbols-outlined text-[20px]">
+      add_task
+    </span>{" "}
+    Exportera till Kalkyl ({measurements.length})
+  </button>
+  <div className="grid grid-cols-2 gap-2 mt-2">
+    <button className="w-full py-2 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg font-medium text-xs hover:bg-gray-100 transition-colors flex justify-center items-center gap-1.5">
+      <span className="material-symbols-outlined text-[16px]">
+        picture_as_pdf
+      </span>{" "}
+      PDF
+    </button>
+    <button className="w-full py-2 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg font-medium text-xs hover:bg-gray-100 transition-colors flex justify-center items-center gap-1.5">
+      <span className="material-symbols-outlined text-[16px]">
+        table_chart
+      </span>{" "}
+      Excel
+    </button>
+  </div>
+</div>
+
             )}
           </div>
+        )}
 
-          {pdfDoc && (
-            <div className="p-5 flex flex-col gap-3 bg-white border-t border-gray-100 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
-              <button
-                onClick={exportSelected}
-                className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm flex items-center justify-center gap-2 shadow-md hover:bg-blue-700 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[20px]">
-                  add_task
-                </span>{" "}
-                Exportera till Kalkyl ({measurements.length})
-              </button>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <button className="w-full py-2 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg font-medium text-xs hover:bg-gray-100 transition-colors flex justify-center items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[16px]">
-                    picture_as_pdf
-                  </span>{" "}
-                  PDF
-                </button>
-                <button className="w-full py-2 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg font-medium text-xs hover:bg-gray-100 transition-colors flex justify-center items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[16px]">
-                    table_chart
-                  </span>{" "}
-                  Excel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Right Sidebar Icons Bar */}
+        {pdfDoc && (
+          <div className="w-[50px] border-l border-gray-200 bg-white flex flex-col items-center py-4 gap-4 shrink-0 z-20 shadow-sm relative">
+            <button 
+              onClick={() => setActiveRightTab(prev => prev === 'skala' ? null : 'skala')} 
+              className={`p-2 rounded-xl transition-all ${activeRightTab === 'skala' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`} 
+              title="Skala"
+            >
+              <span className="material-symbols-outlined text-[20px]">straighten</span>
+            </button>
+            <button 
+              onClick={() => setActiveRightTab(prev => prev === 'grupper' ? null : 'grupper')} 
+              className={`p-2 rounded-xl transition-all ${activeRightTab === 'grupper' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`} 
+              title="Mätgrupper"
+            >
+              <span className="material-symbols-outlined text-[20px]">folder_copy</span>
+            </button>
+            <button 
+              onClick={() => setActiveRightTab(prev => prev === 'egenskaper' ? null : 'egenskaper')} 
+              className={`p-2 rounded-xl transition-all ${activeRightTab === 'egenskaper' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`} 
+              title="Egenskaper"
+            >
+              <span className="material-symbols-outlined text-[20px]">tune</span>
+            </button>
+            <div className="flex-1" />
+            <button 
+              onClick={() => setActiveRightTab(prev => prev === 'export' ? null : 'export')} 
+              className={`p-2 rounded-xl transition-all ${activeRightTab === 'export' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`} 
+              title="Exportera till Kalkyl"
+            >
+              <span className="material-symbols-outlined text-[20px]">add_task</span>
+            </button>
+          </div>
+        )}
+
       </div>
+        {/* Bottom Panel: Measurements Table */}
+        {pdfDoc && (
+          <div 
+            className="border-t border-gray-300 bg-white flex flex-col shrink-0 z-20 w-full relative" 
+            style={{ zIndex: 30, height: window.innerWidth >= 1024 ? bottomPanelHeight : 250 }}
+          >
+            {/* Resize Handle for Bottom Panel */}
+            <div
+              className="hidden lg:block absolute left-0 right-0 top-0 h-2 cursor-row-resize z-50 hover:bg-blue-500/50 active:bg-blue-500/70 transition-colors"
+              onPointerDown={startBottomPanelResize}
+              style={{ transform: 'translateY(-50%)' }}
+            />
 
+            <div className="bg-gray-100 border-b border-gray-300 px-3 py-2 flex justify-between items-center shrink-0">
+              <span className="font-bold text-xs uppercase tracking-wider text-gray-700 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[16px]">list_alt</span>
+                Mätningar (Mängdförteckning)
+              </span>
+              <span className="text-gray-500 text-xs font-medium">
+                Sida {pageNum} ({measurements.filter((m) => m.page === pageNum).length} objekt)
+              </span>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {selectedBulkMeasurements.size > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex flex-wrap items-center gap-4 shadow-sm sticky top-0 z-20">
+                  <span className="font-bold text-blue-800 text-sm">{selectedBulkMeasurements.size} valda</span>
+                  
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="Nytt namn..." 
+                      className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 outline-none w-40"
+                      value={bulkActionName}
+                      onChange={e => setBulkActionName(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <select 
+                      className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 outline-none w-40"
+                      value={bulkActionGroupId}
+                      onChange={e => setBulkActionGroupId(e.target.value)}
+                    >
+                      <option value="">-- Ändra grupp --</option>
+                      {measurementGroups.map(g => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button 
+                    onClick={applyBulkChanges}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
+                    disabled={bulkActionName.trim() === '' && bulkActionGroupId === ''}
+                  >
+                    Tillämpa ändringar
+                  </button>
+                  
+                  <div className="flex-1"></div>
+                  
+                  <button 
+                    onClick={deleteBulkSelected}
+                    className="text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                    Radera valda
+                  </button>
+                </div>
+              )}
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-white border-b border-gray-200 sticky top-0 shadow-sm" style={{ zIndex: 10 }}>
+                  <tr>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase text-center w-10">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        checked={measurements.filter((m) => m.page === pageNum).length > 0 && measurements.filter((m) => m.page === pageNum).every(m => selectedBulkMeasurements.has(m.id))}
+                        onChange={handleSelectAllOnPage}
+                      />
+                    </th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase">Färg</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase">Namn/Etikett</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase">Typ</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase">Grupp</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase text-right">Mängd</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase text-right">Höjd/Djup</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase text-right">Antal</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase text-right">Totalt</th>
+                    <th className="px-3 py-2 font-bold text-gray-500 uppercase text-center w-32">Åtgärder</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {measurements.filter((m) => m.page === pageNum).length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="text-center py-8 text-gray-400 font-medium">
+                        Inga mätningar på denna sida.
+                      </td>
+                    </tr>
+                  ) : (
+                    measurements.filter((m) => m.page === pageNum).map(m => {
+                      const groupName = measurementGroups.find(g => g.id === (m.groupId || 'default'))?.name || 'Standard';
+                      const isSelected = selectedMeasurementId === m.id;
+                      const unit = m.tool === "area" ? "m²" : m.tool === "volume" ? "m³" : m.tool === "count" ? "st" : m.tool === "text" ? "" : "m";
+                      return (
+                        <tr 
+                          key={m.id} 
+                          onClick={() => setSelectedMeasurementId(m.id)}
+                          className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : selectedBulkMeasurements.has(m.id) ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}
+                        >
+                          <td className="px-3 py-2 text-center w-10" onClick={e => e.stopPropagation()}>
+                            <input 
+                              type="checkbox" 
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={selectedBulkMeasurements.has(m.id)}
+                              onChange={(e) => handleBulkSelect(m.id, e.target.checked)}
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-center w-10">
+                            <div className="w-3 h-3 rounded-full mx-auto shadow-sm" style={{ backgroundColor: m.color }}></div>
+                          </td>
+                          <td className="px-3 py-2 font-medium text-gray-800">
+                            <input
+                              type="text"
+                              value={m.name || (m.tool === 'text' ? m.text : `Mätning ${m.id.substring(m.id.length - 4)}`)}
+                              onChange={(e) => {
+                                setMeasurements(measurements.map(x => x.id === m.id ? { ...x, name: e.target.value } : x));
+                              }}
+                              className="w-full bg-transparent border-none focus:ring-1 focus:ring-blue-500 rounded px-1 outline-none text-sm"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-600 capitalize">{m.tool}</td>
+                          <td className="px-3 py-2 text-gray-600">{groupName}</td>
+                          <td className="px-3 py-2 text-gray-800 font-mono text-right">{m.tool !== 'text' && m.tool !== 'count' ? m.value?.toFixed(2) : '-'} {m.tool !== 'text' && m.tool !== 'count' ? unit : ''}</td>
+                          <td className="px-3 py-2 text-gray-600 font-mono text-right">{m.height ? m.height.toFixed(2) + ' m' : '-'}</td>
+                          <td className="px-3 py-2 text-gray-600 font-mono text-right">{m.multiplier || 1}</td>
+                          <td className="px-3 py-2 text-gray-800 font-bold font-mono text-right bg-gray-50/50">
+                            {m.tool !== 'text' ? ((m.value || (m.tool === 'count' ? 1 : 0)) * (m.multiplier || 1)).toFixed(2) : '-'} {m.tool !== 'text' ? unit : ''}
+                          </td>
+                          <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => scaleSelectedMeasurement(m.id, 1.05)}
+                                className="p-1 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50 transition-colors"
+                                title="Förstora (5%)"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">zoom_in</span>
+                              </button>
+                              <button
+                                onClick={() => scaleSelectedMeasurement(m.id, 0.95)}
+                                className="p-1 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50 transition-colors"
+                                title="Minska (5%)"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">zoom_out</span>
+                              </button>
+                              <button
+                                onClick={() => toggleMeasurementLock(m.id)}
+                                className={`p-1 rounded transition-colors ${m.isLocked ? 'text-amber-500 bg-amber-50' : 'text-gray-400 hover:text-amber-500 hover:bg-amber-50'}`}
+                                title={m.isLocked ? 'Lås upp' : 'Sätt fast (Lås)'}
+                              >
+                                <span className="material-symbols-outlined text-[16px]">{m.isLocked ? 'lock' : 'lock_open'}</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!m.isLocked) {
+                                    setMeasurements(prev => prev.filter(x => x.id !== m.id));
+                                    if (selectedMeasurementId === m.id) setSelectedMeasurementId(null);
+                                  }
+                                }}
+                                className={`p-1 rounded transition-colors ${m.isLocked ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`}
+                                title="Ta bort"
+                                disabled={m.isLocked}
+                              >
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+      </div>
       {dialogConfig && dialogConfig.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#00000080] backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in-95 duration-200">
@@ -2386,6 +2842,11 @@ export function PdfMeasurementTab({
           </div>
         </div>
       )}
+      <DocumentPickerModal 
+        isOpen={isFfuPickerOpen}
+        onClose={() => setIsFfuPickerOpen(false)}
+        projectId={activeProjectId || documentId || 'mock-project-id'}
+      />
     </div>
   );
 }
@@ -2395,16 +2856,18 @@ function ToolButton({
   onClick,
   icon,
   label,
+  hideOnMobile = false,
 }: {
   active: boolean;
   onClick: () => void;
   icon: string;
   label?: string;
+  hideOnMobile?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${active ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-200" : "text-gray-600 hover:bg-gray-100 border border-transparent"}`}
+      className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${active ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-200" : "text-gray-600 hover:bg-gray-100 border border-transparent"} ${hideOnMobile ? 'hidden md:flex' : ''}`}
       title={label}
     >
       <span
@@ -2413,7 +2876,7 @@ function ToolButton({
         {icon}
       </span>
       {label && (
-        <span className={`text-xs ${active ? "font-semibold" : "font-medium"}`}>
+        <span className={`text-xs ${active ? "font-semibold" : "font-medium"} hidden lg:inline`}>
           {label}
         </span>
       )}

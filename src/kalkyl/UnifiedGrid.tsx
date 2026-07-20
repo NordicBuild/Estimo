@@ -349,7 +349,7 @@ export function UnifiedGrid(props: Props) {
 
   return (
     <div className="flex-1 overflow-auto bg-white">
-      <table className="w-full text-left border-collapse text-sm">
+      <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
         <thead className="sticky top-0 bg-[#f8fafc] shadow-sm z-10 text-[10px] uppercase text-gray-500">
           <tr>
             <th className="p-2 border-b border-gray-200 w-10 text-center"></th>

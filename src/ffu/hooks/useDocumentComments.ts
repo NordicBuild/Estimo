@@ -69,7 +69,7 @@ export function useDocumentComments(documentId: string | null) {
 
       setComments(rootComments);
     } catch (err: any) {
-      console.error('Error fetching comments:', err);
+      console.warn('Comments fetch (expected if missing tables):', err);
       setError(err.message);
     } finally {
       setIsLoading(false);

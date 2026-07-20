@@ -150,7 +150,7 @@ export function ByggdelModal({ isOpen, onClose, onSave, initialData, materials, 
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 flex flex-col items-center pt-8 z-[2000] p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-[1100px] max-w-full flex flex-col overflow-hidden max-h-[90vh]">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl flex flex-col overflow-hidden max-h-[90vh]">
         <div className="flex justify-between items-center px-6 py-4 border-b border-[var(--border)] bg-[var(--surface2)]">
           <h2 className="font-extrabold text-[15px] tracking-tight flex items-center gap-2">
              <i className="fa-solid fa-layer-group text-[var(--blue)]"></i>

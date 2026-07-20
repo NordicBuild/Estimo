@@ -17,7 +17,7 @@ export function search(documents: ProjectDocument[], query: string, filters?: Se
 
   let results = documents.map(doc => {
     let score = 0;
-    const lowerFilename = doc.filename.toLowerCase();
+    const lowerFilename = (doc.filename || '').toLowerCase();
     const docTags = (doc.tags || []).map(t => t.toLowerCase());
 
     if (tokens.length > 0) {
@@ -73,7 +73,7 @@ export function suggestTags(filename: string): string[] {
     }
   });
 
-  if (filename.toLowerCase().includes('pdf')) {
+  if ((filename || '').toLowerCase().includes('pdf')) {
     tags.add('pdf');
   }
 

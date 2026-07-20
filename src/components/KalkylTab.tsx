@@ -281,9 +281,9 @@ export function KalkylTab(props: Props) {
     <div className="flex flex-col h-full bg-[#f3f4f6]">
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         <div className="flex-1 min-w-0 flex flex-col">
-          <div className="bg-white border-b border-gray-300 px-4 py-2 flex items-center justify-between shrink-0">
-            <span className="font-semibold text-sm text-gray-700">WBS Kalkyl</span>
-            <div className="flex items-center gap-2">
+          <div className="bg-white border-b border-gray-300 px-4 py-2 flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-2">
+            <span className="font-semibold text-sm text-gray-700 hidden md:inline">WBS Kalkyl</span>
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
               <label className="flex items-center gap-2 text-xs text-gray-700 font-semibold cursor-pointer select-none border-r border-gray-300 pr-3 mr-1">
                  <input 
                     type="checkbox" 
@@ -291,12 +291,13 @@ export function KalkylTab(props: Props) {
                     onChange={e => setShowInactiveMoments(e.target.checked)}
                     className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 cursor-pointer"
                  />
-                 Visa avaktiverade moment
+                 <span className="hidden md:inline">Visa avaktiverade moment</span>
+                 <span className="md:hidden">Inaktiva</span>
               </label>
               
               {byggdelTemplates && byggdelTemplates.length > 0 && (
                 <select 
-                  className="border border-blue-300 bg-blue-50 text-blue-700 rounded px-2 py-1 text-xs outline-none font-medium cursor-pointer"
+                  className="border border-blue-300 bg-blue-50 text-blue-700 rounded px-2 py-1 text-xs outline-none font-medium cursor-pointer max-w-[120px] md:max-w-none"
                   value=""
                   onChange={e => {
                     const id = Number(e.target.value);
@@ -306,7 +307,7 @@ export function KalkylTab(props: Props) {
                     }
                   }}
                 >
-                  <option value="" disabled>+ Infoga från mall...</option>
+                  <option value="" disabled>+ Mall</option>
                   {byggdelTemplates.map(t => (
                     <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
@@ -317,22 +318,23 @@ export function KalkylTab(props: Props) {
                   onClick={() => setShowReceptModal(true)}
                   className="border border-green-300 bg-green-50 text-green-700 rounded px-2 py-1 text-xs outline-none font-medium cursor-pointer hover:bg-green-100"
                 >
-                  + Infoga från recept...
+                  <span className="hidden md:inline">+ Infoga från recept...</span>
+                  <span className="md:hidden">+ Recept</span>
                 </button>
               )}
               <select 
-                className="border border-gray-300 rounded px-2 py-1 text-xs outline-none bg-gray-50"
+                className="border border-gray-300 rounded px-2 py-1 text-xs outline-none bg-gray-50 max-w-[100px] md:max-w-none"
                 value={filterType}
                 onChange={e => setFilterType(e.target.value)}
               >
-                <option value="">Alla typer (WBS)</option>
+                <option value="">Alla (WBS)</option>
                 {uniqueTypes.map((type, tIdx) => {
                   const typeLabel = INITIAL_TIDSFAKTORER.find((t: any) => t.type === type)?.label || type;
                   return <option key={`type-${tIdx}`} value={type}>{typeLabel}</option>;
                 })}
               </select>
-              <Button variant="ghost" onClick={() => toggleAllByggdelar(true)} className="text-xs px-2" icon="unfold_less">Fäll ihop</Button>
-              <Button variant="ghost" onClick={() => toggleAllByggdelar(false)} className="text-xs px-2" icon="unfold_more">Fäll ut</Button>
+              <Button variant="ghost" onClick={() => toggleAllByggdelar(true)} className="text-xs px-2 hidden sm:flex" icon="unfold_less"><span className="hidden lg:inline">Fäll ihop</span></Button>
+              <Button variant="ghost" onClick={() => toggleAllByggdelar(false)} className="text-xs px-2 hidden sm:flex" icon="unfold_more"><span className="hidden lg:inline">Fäll ut</span></Button>
             </div>
           </div>
 

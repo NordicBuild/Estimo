@@ -162,7 +162,7 @@ export function ErfarenhetModal({ isOpen, onClose, byggdelar, calcResult, compan
               <p className="text-sm text-gray-600 mb-6">
                 Projektet är markerat som klart. Fyll i verklig tidsåtgång (utfall) per arbetsmoment för att kalibrera era framtida kalkyler.
               </p>
-              <table className="w-full text-left text-sm">
+              <div className="overflow-x-auto"><table className="w-full text-left text-sm whitespace-nowrap lg:whitespace-normal">
                 <thead className="bg-gray-50 border-b border-[var(--border)]">
                   <tr>
                     <th className="p-3">Byggdelstyp</th>
@@ -189,14 +189,14 @@ export function ErfarenhetModal({ isOpen, onClose, byggdelar, calcResult, compan
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           ) : (
             <div>
               <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 mb-6 text-sm text-purple-800">
                 <strong>Viktigt:</strong> Följande uppdateringar påverkar företagets tidsfaktorer och kommer att användas i <strong>framtida kalkyler</strong>. Ett medelvärde (smoothing) appliceras för att undvika för snabba svängningar.
               </div>
-              <table className="w-full text-left text-sm">
+              <div className="overflow-x-auto"><table className="w-full text-left text-sm whitespace-nowrap lg:whitespace-normal">
                 <thead className="bg-gray-50 border-b border-[var(--border)]">
                   <tr>
                     <th className="p-3 w-10">Tillämpa</th>
@@ -233,7 +233,7 @@ export function ErfarenhetModal({ isOpen, onClose, byggdelar, calcResult, compan
                     );
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           )}
         </div>

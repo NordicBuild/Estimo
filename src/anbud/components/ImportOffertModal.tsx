@@ -69,7 +69,7 @@ export function ImportOffertModal({ isOpen, onClose, onSave, referensLista }: Pr
 
     // 1. Exact match on key (id)
     referensLista.forEach((ref) => {
-      const exactIndex = excelRows.findIndex((er, i) => !usedExcelRows.has(i) && er.kod.toLowerCase() === ref.key.toLowerCase());
+      const exactIndex = excelRows.findIndex((er, i) => !usedExcelRows.has(i) && (er.kod || '').toLowerCase() === (ref.key || '').toLowerCase());
       if (exactIndex !== -1) {
         newMapping[ref.key] = { pris: excelRows[exactIndex].pris, excelMatch: excelRows[exactIndex].kod };
         usedExcelRows.add(exactIndex);
@@ -83,8 +83,8 @@ export function ImportOffertModal({ isOpen, onClose, onSave, referensLista }: Pr
       const fuzzyIndex = excelRows.findIndex((er, i) => {
         if (usedExcelRows.has(i)) return false;
         // Simple fuzzy: excel kod is included in benamning or vice versa
-        const el = er.kod.toLowerCase();
-        const bl = ref.benamning.toLowerCase();
+        const el = (er.kod || '').toLowerCase();
+        const bl = (ref.benamning || '').toLowerCase();
         return el && bl && (el.includes(bl) || bl.includes(el));
       });
 

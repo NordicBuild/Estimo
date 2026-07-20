@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { CalculationResult } from '../useCalculation';
 import { Material, ProjectInfo, CompanyInfo } from '../data';
+import { saveDocument, saveFile } from '../ffu/localDb';
+import { supabase } from '../supabase';
 // import removed
 
 interface Props {
@@ -10,13 +12,17 @@ interface Props {
   projectInfo: ProjectInfo;
   setProjectInfo?: React.Dispatch<React.SetStateAction<ProjectInfo>>;
   companyInfo: CompanyInfo;
+  projectId?: string;
 }
 
-export function SammanstallnTab({ calcResult, materials, updateMaterial, projectInfo, setProjectInfo, companyInfo }: Props) {
+export function SammanstallnTab({ calcResult, materials, updateMaterial, projectInfo, setProjectInfo, companyInfo, projectId }: Props) {
   const formatKr = (v: number) => Math.round(v).toLocaleString('sv-SE') + ' kr';
   const formatN = (v: number) => v.toLocaleString('sv-SE', { maximumFractionDigits: 1 });
   const [editingPrice, setEditingPrice] = useState<{name: string, price: number} | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
 
   const handleExportPDF = async () => {
     if (!pdfRef.current) return;
@@ -33,6 +39,56 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
     html2pdf().set(opt).from(element).save();
   };
 
+  const handleSaveToHistory = async () => {
+    if (!pdfRef.current || !projectId) return;
+    setIsSaving(true);
+    setSaveMessage('');
+    try {
+      const element = pdfRef.current;
+      const html2pdfModule = await import('html2pdf.js');
+      const html2pdf = html2pdfModule.default;
+      const filename = `Sammanstallning_${projectInfo.nr || 'projekt'}_${new Date().getTime()}.pdf`;
+      
+      const opt = {
+        margin:       10,
+        filename:     filename,
+        image:        { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+      };
+      
+      const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
+      const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+      
+      const docId = 'doc_' + Date.now();
+      const filePath = `${projectId}/${filename}`;
+      
+      const doc = {
+        id: docId,
+        project_id: projectId,
+        filename: filename,
+        file_path: filePath,
+        created_at: new Date().toISOString(),
+        category: 'Sammanställning',
+        size: file.size,
+        file_type: 'application/pdf',
+        uploader_id: 'system',
+        uploader_name: 'System'
+      };
+      
+      await saveFile(filePath, file);
+      await saveDocument(doc);
+      
+      setSaveMessage('Sparad till dokument!');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (err) {
+      console.error(err);
+      setSaveMessage('Kunde inte spara.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handlePriceSave = (materialName: string) => {
     if (!editingPrice || editingPrice.name !== materialName) return;
     const mIndex = materials.findIndex(m => m.name === materialName);
@@ -45,12 +101,21 @@ export function SammanstallnTab({ calcResult, materials, updateMaterial, project
 
   return (
     <div className="container relative">
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end mb-4 gap-2 items-center">
+        {saveMessage && <span className="text-sm text-green-600 font-medium mr-2">{saveMessage}</span>}
+        <button
+          onClick={handleSaveToHistory}
+          disabled={!projectId || isSaving}
+          className="bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2 disabled:opacity-50"
+        >
+          <span className="material-symbols-outlined text-[18px]">save</span> 
+          {isSaving ? 'Sparar...' : 'Spara till FFU/Dokument'}
+        </button>
         <button
           onClick={handleExportPDF}
-          className="bg-[var(--blue)] hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2"
+          className="bg-primary hover:bg-primary/90 text-on-primary shadow-sm px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2"
         >
-          <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span> Exportera som PDF
+          <span className="material-symbols-outlined text-[18px]">download</span> Ladda ner PDF
         </button>
       </div>
 

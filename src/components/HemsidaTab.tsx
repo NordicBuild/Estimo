@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import { supabase } from '../supabase';
 import { User } from '@supabase/supabase-js';
 import { SavedProject, ProjectFolder, CompanyInfo } from '../data';
@@ -25,7 +27,7 @@ interface HemsidaTabProps {
   folders: ProjectFolder[];
   activeProjectId: string;
   companyName: string;
-  createFolder: () => void;
+  createFolder: (parentId?: string) => void;
   createProject: (folderId: string | null) => void;
   renameFolder: (id: string, e: React.MouseEvent) => void;
   deleteFolder: (id: string, e: React.MouseEvent) => void;
@@ -49,6 +51,12 @@ export function HemsidaTab({
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [statusFilter, setStatusFilter] = useState('Alla');
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+
+  const toggleFolder = (folderId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCollapsedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
+  };
 
   useEffect(() => {
     if (user && user.user_metadata?.full_name) {
@@ -83,12 +91,41 @@ export function HemsidaTab({
     }
   };
 
-  const completedProjects = projects.filter(p => p.projectInfo?.status === 'Klar' || p.projectInfo?.status === 'Avslutat');
-  const ongoingProjects = projects.filter(p => p.projectInfo?.status === 'Pågående' || !p.projectInfo?.status);
+  const handleDragStart = (e: React.DragEvent, projectId: string) => {
+    e.dataTransfer.setData('projectId', projectId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
 
-  const filteredProjects = projects.filter(p => {
+  const handleFolderDragStart = (e: React.DragEvent, folderId: string) => {
+    e.dataTransfer.setData('dragFolderId', folderId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetFolderId: string | null) => {
+    e.preventDefault();
+    const projectId = e.dataTransfer.getData('projectId');
+    const dragFolderId = e.dataTransfer.getData('dragFolderId');
+    
+    if (projectId) {
+      reorderProjects(projectId, null, targetFolderId);
+    } else if (dragFolderId && dragFolderId !== targetFolderId) {
+      // Allow moving folder into another folder, or root (if targetFolderId is null)
+      reorderFolders(dragFolderId, targetFolderId || '');
+    }
+  };
+
+  const completedProjects = (projects || []).filter(p => p?.projectInfo?.status === 'Klar' || p?.projectInfo?.status === 'Avslutat');
+  const ongoingProjects = (projects || []).filter(p => p?.projectInfo?.status === 'Pågående' || !p?.projectInfo?.status);
+
+  const filteredProjects = (projects || []).filter(p => {
+    if (!p) return false;
     if (statusFilter === 'Alla') return true;
-    const status = p.projectInfo?.status || 'Pågående';
+    const status = p?.projectInfo?.status || 'Pågående';
     if (statusFilter === 'Väntande' && (status === 'Väntande' || status === 'Väntar')) return true;
     return status === statusFilter;
   });
@@ -224,277 +261,353 @@ export function HemsidaTab({
         )}
       </div>
 
-      <div className="bg-surface border border-outline-variant rounded-xl shadow-sm overflow-hidden flex flex-col h-full max-h-[800px]">
-        <div className="px-6 py-4 flex items-center justify-between border-b border-outline-variant bg-surface-container-lowest">
-          <div>
-            <h2 className="text-lg font-bold text-on-surface flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">folder_open</span> Kalkylprojekt & Portfolio
-            </h2>
-            <p className="text-sm text-on-surface-variant mt-1">Hantera dina kalkylprojekt och mappar</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-sm font-medium border border-outline-variant rounded-lg px-3 py-1.5 bg-surface text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors"
-            >
-              <option value="Alla">Alla projekt</option>
-              <option value="Pågående">Pågående</option>
-              <option value="Väntande">Väntande</option>
-              <option value="Klar">Klar</option>
-              <option value="Avslutat">Avslutat</option>
-              <option value="Avbrutet">Avbrutet</option>
-            </select>
-            <button className="flex items-center gap-1 text-sm font-medium text-primary hover:bg-surface-container-low px-3 py-1.5 rounded-lg transition-colors border border-outline-variant" title="Ny mapp" onClick={createFolder}>
-              <span className="material-symbols-outlined text-[18px]">create_new_folder</span> Ny mapp
-            </button>
-            <button className="flex items-center gap-1 text-sm font-medium text-on-primary bg-primary hover:opacity-90 px-3 py-1.5 rounded-lg transition-opacity shadow-sm" title="Nytt projekt" onClick={() => createProject(null)}>
-              <span className="material-symbols-outlined text-[18px]">add</span> Nytt projekt
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
-          <div className="space-y-2">
-            {folders.map(folder => {
-              const folderProjects = filteredProjects.filter(p => p.folderId === folder.id);
-              return (
-                <div
-                  key={folder.id} 
-                  className="pt-2 pb-2 transition-all border border-outline-variant rounded-lg bg-surface-container-lowest mb-3"
-                  draggable
-                  onDragStart={(e) => { 
-                    e.dataTransfer.setData('folderId', folder.id); 
-                  }}
-                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-primary', 'shadow-sm'); }}
-                  onDragLeave={(e) => e.currentTarget.classList.remove('border-primary', 'shadow-sm')}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.currentTarget.classList.remove('border-primary', 'shadow-sm');
-                    
-                    const dropFolderId = e.dataTransfer.getData('folderId');
-                    if (dropFolderId && dropFolderId !== folder.id) {
-                      reorderFolders(dropFolderId, folder.id);
-                      return;
-                    }
-                    
-                    const projId = e.dataTransfer.getData('projectId');
-                    if (projId) {
-                      reorderProjects(projId, null, folder.id);
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-between group py-2 px-4 cursor-pointer hover:bg-surface-container-low transition-colors">
-                    <div className="flex items-center gap-3 font-bold text-on-surface text-[15px]">
-                      <span className="material-symbols-outlined text-primary text-[24px]">folder</span>
-                      <span>{folder.name}</span>
-                      <span className="text-xs font-normal text-on-surface-variant bg-surface-container-high px-2 py-0.5 rounded-full">{folderProjects.length}</span>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                      <button className="text-outline hover:text-primary p-1 rounded hover:bg-surface-container-high" title="Nytt projekt i mapp" onClick={(e) => { e.stopPropagation(); createProject(folder.id); }}>
-                        <span className="material-symbols-outlined text-[18px]">add</span>
-                      </button>
-                      <button className="text-outline hover:text-primary p-1 rounded hover:bg-surface-container-high" title="Ändra namn" onClick={(e) => renameFolder(folder.id, e)}>
-                        <span className="material-symbols-outlined text-[18px]">edit</span>
-                      </button>
-                      <button className="text-outline hover:text-error p-1 rounded hover:bg-surface-container-high" title="Ta bort" onClick={(e) => deleteFolder(folder.id, e)}>
-                        <span className="material-symbols-outlined text-[18px]">delete</span>
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                    {folderProjects.length === 0 && (
-                      <div className="text-sm text-on-surface-variant italic py-2 pl-2 col-span-full">Inga projekt i denna mapp</div>
-                    )}
-                    {folderProjects.map(p => (
-                      <div
-                        key={p.id} 
-                        draggable
-                        onDragStart={(e) => {
-                          e.stopPropagation();
-                          e.dataTransfer.setData('projectId', p.id);
-                        }}
-                        onDragOver={(e) => {
-                           e.preventDefault();
-                           e.stopPropagation();
-                           e.currentTarget.classList.add('border-primary', 'shadow-md');
-                        }}
-                        onDragLeave={(e) => e.currentTarget.classList.remove('border-primary', 'shadow-md')}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.currentTarget.classList.remove('border-primary', 'shadow-md');
-                          const dragId = e.dataTransfer.getData('projectId');
-                          if (dragId && dragId !== p.id) {
-                            reorderProjects(dragId, p.id, folder.id);
-                          }
-                        }}
-                        className={`flex flex-col group p-3 rounded-lg cursor-grab active:cursor-grabbing transition-all border border-l-4 shadow-sm ${activeProjectId === p.id ? 'bg-primary/5 border-primary border-l-primary text-primary' : 'bg-surface border-outline-variant border-l-outline-variant hover:border-primary/50 text-on-surface'}`} 
-                        onClick={() => switchProject(p.id)}
+      
+      <div className="h-[800px] mt-8 w-full border border-outline-variant rounded-2xl overflow-hidden shadow-sm bg-surface">
+        <PanelGroup orientation="horizontal">
+          
+          {/* Panel 1: Kalkylprojekt */}
+          <Panel defaultSize={40} minSize={20}>
+            <div className="bg-surface overflow-hidden flex flex-col h-full">
+              <div className="px-6 py-4 flex items-center justify-between border-b border-outline-variant bg-surface-container-lowest">
+                <div>
+                  <h2 className="text-lg font-bold text-on-surface flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">folder_open</span> Projekt
+                  </h2>
+                  <p className="text-sm text-on-surface-variant mt-1">Hantera dina projekt och mappar</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select 
+                    className="px-3 py-1.5 bg-surface border border-outline-variant rounded-lg text-sm focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="Alla">Alla statusar</option>
+                    <option value="Pågående">Pågående</option>
+                    <option value="Väntande">Väntande</option>
+                    <option value="Klar">Färdigställda</option>
+                  </select>
+                  <button 
+                    onClick={() => createFolder()} 
+                    className="px-3 py-1.5 bg-surface-container border border-outline-variant rounded-lg text-sm font-bold text-on-surface hover:bg-surface-container-high transition-colors flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">create_new_folder</span>
+                    Ny mapp
+                  </button>
+                  <button 
+                    onClick={() => createProject(null)} 
+                    className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-sm font-bold shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    Nytt projekt
+                  </button>
+                </div>
+              </div>
+              
+              <div className="p-0 overflow-y-auto flex-1">
+                
+                {/* Folders */}
+                {folders.filter(f => !f.parentId).map(folder => {
+                  const renderFolder = (folder: ProjectFolder, depth: number) => {
+                    const childFolders = folders.filter(f => f.parentId === folder.id);
+                    const childProjects = filteredProjects.filter(p => p.folderId === folder.id);
+                    return (
+                      <div key={folder.id} className="border-b border-outline-variant/50 last:border-b-0"
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => { e.stopPropagation(); handleDrop(e, folder.id); }}
                       >
-                        <div className="flex flex-col mb-3">
-                          <div className="flex items-start gap-2 min-w-0 pointer-events-none mb-1">
-                            <span className={`material-symbols-outlined text-[20px] ${activeProjectId === p.id ? '' : 'text-primary/70'}`}>article</span>
-                            <span className="font-semibold text-sm line-clamp-2 leading-tight flex-1">{p.projectInfo.name || 'Namnlöst kalkylprojekt'}</span>
+                        <div 
+                          className="px-6 py-3 bg-surface-container-lowest flex items-center justify-between group cursor-pointer hover:bg-surface-container-low transition-colors"
+                          onClick={(e) => toggleFolder(folder.id, e)}
+                          draggable
+                          onDragStart={(e) => { e.stopPropagation(); handleFolderDragStart(e, folder.id); }}
+                          style={{ paddingLeft: `${1.5 + depth * 1.5}rem` }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="material-symbols-outlined text-on-surface-variant transition-transform duration-200" style={{ transform: collapsedFolders[folder.id] ? 'rotate(-90deg)' : 'none' }}>
+                              expand_more
+                            </span>
+                            <span className="material-symbols-outlined text-primary">folder</span>
+                            <span className="font-bold text-on-surface">{folder.name}</span>
+                            <span className="text-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">
+                              {childProjects.length}
+                            </span>
                           </div>
-                          {(p.projectInfo.startDate || p.projectInfo.endDate) && (
-                            <div className="text-[10px] text-on-surface-variant flex gap-2 pl-7 pointer-events-none">
-                              {p.projectInfo.startDate && <span><i className="fa-regular fa-calendar mr-1"></i>{p.projectInfo.startDate}</span>}
-                              {p.projectInfo.startDate && p.projectInfo.endDate && <span>-</span>}
-                              {p.projectInfo.endDate && <span><i className="fa-regular fa-calendar-check mr-1"></i>{p.projectInfo.endDate}</span>}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between mt-auto pt-2 border-t border-outline-variant/50">
-                          <div>
-                            <StatusPill status={p.projectInfo.status} />
-                          </div>
-                          <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                            <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Ändra projektnamn" onClick={(e) => renameProject(p.id, e)}>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                            <button className="p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors text-outline hover:text-primary" title="Ändra namn" onClick={(e) => renameFolder(folder.id, e)}>
                               <span className="material-symbols-outlined text-[14px]">edit</span>
                             </button>
-                            <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Kopiera projekt" onClick={(e) => duplicateProject(p.id, e)}>
-                              <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                            <button className="p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors text-outline hover:text-primary" title="Skapa undermapp här" onClick={(e) => { e.stopPropagation(); createFolder(folder.id); }}>
+                              <span className="material-symbols-outlined text-[14px]">create_new_folder</span>
                             </button>
-                            {projects.length > 1 && (
-                              <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-error/10 transition-colors ${activeProjectId === p.id ? 'text-primary hover:text-error' : 'text-outline hover:text-error'}`} title="Ta bort" onClick={(e) => deleteProject(p.id, e)}>
-                                <span className="material-symbols-outlined text-[14px]">delete</span>
-                              </button>
-                            )}
+                            <button className="p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors text-outline hover:text-primary" title="Skapa projekt här" onClick={(e) => { e.stopPropagation(); createProject(folder.id); }}>
+                              <span className="material-symbols-outlined text-[14px]">add</span>
+                            </button>
+                            <button className="p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-error/10 transition-colors text-outline hover:text-error" title="Ta bort mapp" onClick={(e) => deleteFolder(folder.id, e)}>
+                              <span className="material-symbols-outlined text-[14px]">delete</span>
+                            </button>
                           </div>
                         </div>
+                        
+                        <div 
+                          className={`flex flex-col transition-all duration-300 ease-in-out overflow-hidden`}
+                          style={{ 
+                            maxHeight: collapsedFolders[folder.id] ? '0px' : '2000px',
+                            opacity: collapsedFolders[folder.id] ? 0 : 1
+                          }}
+                        >
+                          {childFolders.map(cf => renderFolder(cf, depth + 1))}
+                          {childProjects.map(p => (
+                            <div 
+                              key={p.id} 
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, p.id)}
+                              className={`group flex flex-col p-4 border-b border-outline-variant/30 last:border-b-0 hover:bg-primary/5 transition-all cursor-pointer ${activeProjectId === p.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'}`}
+                              onClick={() => switchProject(p.id)}
+                              style={{ paddingLeft: `${1.5 + (depth + 1) * 1.5}rem` }}
+                            >
+                              <div className="flex flex-col mb-3">
+                                <div className="flex items-start gap-2 min-w-0 pointer-events-none mb-1">
+                                  <span className={`material-symbols-outlined text-[20px] ${activeProjectId === p.id ? '' : 'text-primary/70'}`}>article</span>
+                                  <span className="font-semibold text-sm line-clamp-2 leading-tight flex-1">{p.projectInfo.name || 'Namnlöst projekt'}</span>
+                                </div>
+                                {(p.projectInfo.startDate || p.projectInfo.endDate) && (
+                                  <div className="text-[10px] text-on-surface-variant flex gap-2 pl-7 pointer-events-none">
+                                    {p.projectInfo.startDate && <span><i className="fa-regular fa-calendar mr-1"></i>{p.projectInfo.startDate}</span>}
+                                    {p.projectInfo.startDate && p.projectInfo.endDate && <span>-</span>}
+                                    {p.projectInfo.endDate && <span><i className="fa-regular fa-calendar-check mr-1"></i>{p.projectInfo.endDate}</span>}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-between mt-auto pt-2 border-t border-outline-variant/50">
+                                <div>
+                                  <StatusPill status={p.projectInfo.status} />
+                                </div>
+                                <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                  <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Ändra projektnamn" onClick={(e) => renameProject(p.id, e)}>
+                                    <span className="material-symbols-outlined text-[14px]">edit</span>
+                                  </button>
+                                  <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Kopiera projekt" onClick={(e) => duplicateProject(p.id, e)}>
+                                    <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                  </button>
+                                  <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-error/10 transition-colors ${activeProjectId === p.id ? 'text-primary hover:text-error' : 'text-outline hover:text-error'}`} title="Ta bort" onClick={(e) => deleteProject(p.id, e)}>
+                                    <span className="material-symbols-outlined text-[14px]">delete</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-
-            <div
-              className="mt-6 border-t border-outline-variant pt-4 min-h-[100px] pb-10 rounded-xl"
-              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-surface-container-lowest', 'shadow-inner'); }}
-              onDragLeave={(e) => e.currentTarget.classList.remove('bg-surface-container-lowest', 'shadow-inner')}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.currentTarget.classList.remove('bg-surface-container-lowest', 'shadow-inner');
-                const projId = e.dataTransfer.getData('projectId');
-                if (projId) {
-                  reorderProjects(projId, null, null);
-                }
-              }}
-            >
-              <div className="flex items-center gap-2 px-2 mb-3">
-                <span className="material-symbols-outlined text-outline">inventory_2</span>
-                <h3 className="text-sm font-bold tracking-wide text-on-surface-variant uppercase">Osorterade projekt</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                {filteredProjects.filter(p => !p.folderId).map(p => (
-                  <div
-                    key={p.id} 
-                    draggable
-                    onDragStart={(e) => {
-                      e.stopPropagation();
-                      e.dataTransfer.setData('projectId', p.id);
-                    }}
-                    onDragOver={(e) => {
-                       e.preventDefault();
-                       e.stopPropagation();
-                       e.currentTarget.classList.add('border-primary', 'shadow-md');
-                    }}
-                    onDragLeave={(e) => e.currentTarget.classList.remove('border-primary', 'shadow-md')}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.currentTarget.classList.remove('border-primary', 'shadow-md');
-                      const dragId = e.dataTransfer.getData('projectId');
-                      if (dragId && dragId !== p.id) {
-                        reorderProjects(dragId, p.id, null);
-                      }
-                    }}
-                    className={`flex flex-col group p-3 rounded-lg cursor-grab active:cursor-grabbing transition-all border border-l-4 shadow-sm ${activeProjectId === p.id ? 'bg-primary/5 border-primary border-l-primary text-primary' : 'bg-surface border-outline-variant border-l-outline-variant hover:border-primary/50 text-on-surface'}`} 
-                    onClick={() => switchProject(p.id)}
+                    );
+                  };
+                  return renderFolder(folder, 0);
+                })}
+{/* Root Projects */}
+                  <div className="border-t border-outline-variant/50 mt-4 first:border-t-0 first:mt-0 pb-16 min-h-[150px]"
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, null)}
                   >
-                    <div className="flex flex-col mb-3">
-                      <div className="flex items-start gap-2 min-w-0 pointer-events-none mb-1">
-                        <span className={`material-symbols-outlined text-[20px] ${activeProjectId === p.id ? '' : 'text-primary/70'}`}>article</span>
-                        <span className="font-semibold text-sm line-clamp-2 leading-tight flex-1">{p.projectInfo.name || 'Namnlöst kalkylprojekt'}</span>
-                      </div>
-                      {(p.projectInfo.startDate || p.projectInfo.endDate) && (
-                        <div className="text-[10px] text-on-surface-variant flex gap-2 pl-7 pointer-events-none">
-                          {p.projectInfo.startDate && <span><i className="fa-regular fa-calendar mr-1"></i>{p.projectInfo.startDate}</span>}
-                          {p.projectInfo.startDate && p.projectInfo.endDate && <span>-</span>}
-                          {p.projectInfo.endDate && <span><i className="fa-regular fa-calendar-check mr-1"></i>{p.projectInfo.endDate}</span>}
+                    <div className="px-6 py-3 bg-surface-container-lowest flex items-center gap-2">
+                      <span className="material-symbols-outlined text-on-surface-variant text-[18px]">horizontal_rule</span>
+                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Okategoriserade</span>
+                    </div>
+                    <div className="flex flex-col">
+                      {filteredProjects.filter(p => !p.folderId).length === 0 && (
+                        <div className="text-center py-6 text-sm text-on-surface-variant/50 font-bold border-2 border-dashed border-outline-variant/30 rounded-xl mx-4 mt-2 mb-4 pointer-events-none">
+                          Dra hit projekt för att ta bort från mapp
                         </div>
                       )}
-                    </div>
-                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-outline-variant/50">
-                      <div>
-                        <StatusPill status={p.projectInfo.status} />
-                      </div>
-                      <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                        <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Ändra projektnamn" onClick={(e) => renameProject(p.id, e)}>
-                          <span className="material-symbols-outlined text-[14px]">edit</span>
-                        </button>
-                        <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Kopiera projekt" onClick={(e) => duplicateProject(p.id, e)}>
-                          <span className="material-symbols-outlined text-[14px]">content_copy</span>
-                        </button>
-                        {projects.length > 1 && (
-                          <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-error/10 transition-colors ${activeProjectId === p.id ? 'text-primary hover:text-error' : 'text-outline hover:text-error'}`} title="Ta bort" onClick={(e) => deleteProject(p.id, e)}>
-                            <span className="material-symbols-outlined text-[14px]">delete</span>
-                          </button>
-                        )}
-                      </div>
+                      {filteredProjects.filter(p => !p.folderId).map(p => (
+                        <div 
+                          key={p.id} 
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, p.id)}
+                          className={`group flex flex-col p-4 border-b border-outline-variant/30 last:border-b-0 hover:bg-primary/5 transition-all cursor-pointer ${activeProjectId === p.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'}`}
+                          onClick={() => switchProject(p.id)}
+                        >
+                          <div className="flex flex-col mb-3">
+                            <div className="flex items-start gap-2 min-w-0 pointer-events-none mb-1">
+                              <span className={`material-symbols-outlined text-[20px] ${activeProjectId === p.id ? '' : 'text-primary/70'}`}>article</span>
+                              <span className="font-semibold text-sm line-clamp-2 leading-tight flex-1">{p.projectInfo.name || 'Namnlöst projekt'}</span>
+                            </div>
+                            {(p.projectInfo.startDate || p.projectInfo.endDate) && (
+                              <div className="text-[10px] text-on-surface-variant flex gap-2 pl-7 pointer-events-none">
+                                {p.projectInfo.startDate && <span><i className="fa-regular fa-calendar mr-1"></i>{p.projectInfo.startDate}</span>}
+                                {p.projectInfo.startDate && p.projectInfo.endDate && <span>-</span>}
+                                {p.projectInfo.endDate && <span><i className="fa-regular fa-calendar-check mr-1"></i>{p.projectInfo.endDate}</span>}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between mt-auto pt-2 border-t border-outline-variant/50">
+                            <div>
+                              <StatusPill status={p.projectInfo.status} />
+                            </div>
+                            <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                              <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Ändra projektnamn" onClick={(e) => renameProject(p.id, e)}>
+                                <span className="material-symbols-outlined text-[14px]">edit</span>
+                              </button>
+                              <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors ${activeProjectId === p.id ? 'text-primary' : 'text-outline hover:text-primary'}`} title="Kopiera projekt" onClick={(e) => duplicateProject(p.id, e)}>
+                                <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                              </button>
+                              {projects.length > 1 && (
+                                <button className={`p-1 w-6 h-6 flex items-center justify-center rounded hover:bg-error/10 transition-colors ${activeProjectId === p.id ? 'text-primary hover:text-error' : 'text-outline hover:text-error'}`} title="Ta bort" onClick={(e) => deleteProject(p.id, e)}>
+                                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
               </div>
             </div>
-          </div>
-        </div>
+          </Panel>
 
-        {/* Activity Log Section */}
-        <div className="bg-surface rounded-2xl shadow-sm border border-outline-variant overflow-hidden mt-8">
-          <div className="bg-surface-container-lowest px-6 py-4 border-b border-outline-variant flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">history</span>
-            <h2 className="text-lg font-bold text-on-surface">Aktivitetslogg</h2>
-          </div>
-          <div className="p-6">
-            {(() => {
-              const allLogs = projects.flatMap(p => 
-                (p.activityLogs || []).map(log => ({ ...log, projectName: p.projectInfo.name || 'Okänt projekt' }))
-              ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
-
-              if (allLogs.length === 0) {
-                return <div className="text-sm text-on-surface-variant italic py-4 text-center">Inga händelser registrerade ännu.</div>;
-              }
-
-              return (
-                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-outline-variant before:to-transparent">
-                  {allLogs.map((log, i) => (
-                    <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-surface bg-primary/10 text-primary shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                        <span className="material-symbols-outlined text-[16px]">{log.action.includes('status') ? 'sync_alt' : (log.action.includes('bort') ? 'delete' : 'save')}</span>
-                      </div>
-                      <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm transition-all hover:shadow-md">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-on-surface text-sm">{log.action}</span>
-                          <span className="text-xs font-medium text-primary bg-primary/5 px-2 py-1 rounded-full">
-                            {new Date(log.timestamp).toLocaleString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </span>
+          <PanelResizeHandle className="w-2 bg-surface-container-highest hover:bg-primary/50 active:bg-primary transition-colors cursor-col-resize flex items-center justify-center">
+            <div className="w-1 h-8 bg-outline-variant rounded-full" />
+          </PanelResizeHandle>
+          
+          {/* Panel 2: Aktivitetslogg */}
+          <Panel defaultSize={30} minSize={20}>
+            <div className="bg-surface overflow-hidden flex flex-col h-full border-l border-outline-variant">
+              <div className="bg-surface-container-lowest px-6 py-4 border-b border-outline-variant flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">history</span>
+                <h2 className="text-lg font-bold text-on-surface">Aktivitetslogg</h2>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1">
+                {(() => {
+                  const allLogs = projects.flatMap(p => 
+                    (p.activityLogs || []).map(log => ({ ...log, projectName: p.projectInfo.name || 'Okänt projekt' }))
+                  ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
+                  
+                  if (allLogs.length === 0) {
+                    return <div className="text-sm text-on-surface-variant italic py-4 text-center">Inga händelser registrerade ännu.</div>;
+                  }
+                  
+                  return (
+                    <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-outline-variant before:to-transparent">
+                      {allLogs.map((log, i) => (
+                        <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                          <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-surface bg-primary/10 text-primary shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                            <span className="material-symbols-outlined text-[16px]">{log.action.includes('status') ? 'sync_alt' : (log.action.includes('bort') ? 'delete' : 'save')}</span>
+                          </div>
+                          <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm transition-all hover:shadow-md">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-on-surface text-sm">{log.action}</span>
+                              <span className="text-xs font-medium text-primary bg-primary/5 px-2 py-1 rounded-full">
+                                {new Date(log.timestamp).toLocaleString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div className="text-sm font-semibold text-on-surface-variant mb-1">{log.projectName}</div>
+                            {log.details && <div className="text-sm text-on-surface-variant/80">{log.details}</div>}
+                          </div>
                         </div>
-                        <div className="text-sm font-semibold text-on-surface-variant mb-1">{log.projectName}</div>
-                        {log.details && <div className="text-sm text-on-surface-variant/80">{log.details}</div>}
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </Panel>
 
+          <PanelResizeHandle className="w-2 bg-surface-container-highest hover:bg-primary/50 active:bg-primary transition-colors cursor-col-resize flex items-center justify-center">
+            <div className="w-1 h-8 bg-outline-variant rounded-full" />
+          </PanelResizeHandle>
+          
+          {/* Panel 3: Portfolio */}
+          <Panel defaultSize={30} minSize={20}>
+            <div className="bg-surface overflow-hidden flex flex-col h-full border-l border-outline-variant">
+              <div className="bg-surface-container-lowest px-6 py-4 border-b border-outline-variant flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">cases</span>
+                <h2 className="text-lg font-bold text-on-surface">Portfolio & Nyckeltal</h2>
+              </div>
+              <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-6">
+                
+                {(() => {
+                  const totalContractValue = projects.reduce((acc, p) => acc + (Number(p.projectInfo.contractValue) || 0), 0);
+                  const totalBta = projects.reduce((acc, p) => acc + (Number(p.projectInfo.bta) || 0), 0);
+                  
+                  const statusCounts = projects.reduce((acc, p) => {
+                    const status = p.projectInfo.status || 'Pågående';
+                    acc[status] = (acc[status] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>);
+                  
+                  const pieData = Object.keys(statusCounts).map(key => ({
+                    name: key,
+                    value: statusCounts[key]
+                  }));
+                  
+                  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-col">
+                          <span className="text-xs font-bold text-on-surface-variant uppercase mb-1">Totalt Värde</span>
+                          <span className="text-xl font-black text-on-surface">{totalContractValue.toLocaleString('sv-SE')} kr</span>
+                        </div>
+                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-col">
+                          <span className="text-xs font-bold text-on-surface-variant uppercase mb-1">Total BTA</span>
+                          <span className="text-xl font-black text-on-surface">{totalBta.toLocaleString('sv-SE')} m²</span>
+                        </div>
+                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-col">
+                          <span className="text-xs font-bold text-on-surface-variant uppercase mb-1">Snittvärde/Projekt</span>
+                          <span className="text-xl font-black text-on-surface">{projects.length > 0 ? (totalContractValue / projects.length).toLocaleString('sv-SE', {maximumFractionDigits: 0}) : 0} kr</span>
+                        </div>
+                        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-col">
+                          <span className="text-xs font-bold text-on-surface-variant uppercase mb-1">Totala Projekt</span>
+                          <span className="text-xl font-black text-on-surface">{projects.length} st</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <h3 className="text-sm font-bold text-on-surface mb-4">Projektstatus</h3>
+                        <div className="h-48 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={pieData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={40}
+                                outerRadius={80}
+                                fill="#8884d8"
+                                paddingAngle={5}
+                                dataKey="value"
+                              >
+                                {pieData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value: number) => [`${value} st`, 'Antal']} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-4 mt-2">
+                          {pieData.map((entry, index) => (
+                            <div key={entry.name} className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+                              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
+                              {entry.name} ({entry.value})
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div className="mt-auto pt-6">
+                        <button className="w-full px-4 py-2 bg-primary/10 text-primary font-bold rounded-xl text-sm hover:bg-primary/20 transition-colors flex items-center justify-center gap-2">
+                          <span className="material-symbols-outlined text-[18px]">download</span> Exportera Rapport
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
+
+              </div>
+            </div>
+          </Panel>
+</PanelGroup>
       </div>
     </div>
   );

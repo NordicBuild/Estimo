@@ -22,4 +22,5 @@ export interface Measurement {
   text?: string;
   depth?: number;
   opacity?: number;
+  isLocked?: boolean;
 }

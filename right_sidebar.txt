@@ -1,0 +1,538 @@
+{/* Right Sidebar */}
+        <div className="w-64 lg:w-72 border-l border-gray-200 bg-white flex flex-col shrink-0 z-20 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)]">
+          {pdfDoc && (
+            <>
+              <div className="p-3 border-b border-gray-100">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[16px]">
+                    straighten
+                  </span>{" "}
+                  Skala
+                </h3>
+                <div className={`flex justify-between items-center p-2 rounded-md border mb-2 ${(() => {
+                  const currentScale = scaleForPage(pageScales, pageNum, presetScale(0));
+                  return currentScale.invalid ? "bg-red-50 text-red-800 border-red-200" : "bg-blue-50 text-blue-800 border-blue-100";
+                })()}`}>
+                  <span className="font-medium text-xs flex items-center gap-1">
+                    {(() => {
+                      const currentScale = scaleForPage(pageScales, pageNum, presetScale(0));
+                      return currentScale.invalid ? (
+                        <>
+                          <span className="material-symbols-outlined text-[14px]">warning</span>
+                          Okalibrerad
+                        </>
+                      ) : "Aktuell Skala";
+                    })()}
+                  </span>
+                  <span className="font-mono font-bold text-xs">
+                    {(() => {
+                      const currentScale = scaleForPage(pageScales, pageNum, presetScale(0));
+                      if (currentScale.invalid) return "Kalibrera först";
+                      const ratio = ratioFromScale(currentScale);
+                      return `1:${Math.round(ratio)} (1px=${toRealDistance(1, currentScale.pixelsPerUnit).toFixed(4)}m)`;
+                    })()}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[10, 20, 25, 50, 100, 200, 400, 500, 1000].map(
+                    (ratio) => (
+                      <button
+                        key={ratio}
+                        onClick={() => handleSetScale(presetScale(ratio))}
+                        className="py-1 text-[10px] font-medium border border-gray-200 text-gray-600 rounded hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                      >
+                        1:{ratio}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 border-b border-gray-100">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[16px]">
+                    folder_copy
+                  </span>{" "}
+                  Mätgrupper
+                </h3>
+                <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-md border border-gray-200 mb-2">
+                  <div className="w-3 h-3 rounded shadow-sm" style={{ backgroundColor: measurementGroups.find(g => g.id === activeGroupId)?.color || '#ccc' }}></div>
+                  <select
+                    className="flex-1 w-full text-xs font-medium bg-transparent border-none focus:ring-0 text-gray-700 cursor-pointer p-0"
+                    value={activeGroupId}
+                    onChange={(e) => setActiveGroupId(e.target.value)}
+                  >
+                    {measurementGroups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className="flex-1 text-xs py-1 border border-gray-300 rounded hover:bg-gray-100"
+                    onClick={() => {
+                      setDialogConfig({
+                        isOpen: true,
+                        title: "Ny mätgrupp",
+                        message: "Ange namn för ny mätgrupp:",
+                        defaultValue: "",
+                        onConfirm: (name) => {
+                          if (name) {
+                            const newGroup: MeasurementGroup = {
+                              id: Date.now().toString(),
+                              name,
+                              color: `#${Math.floor(Math.random()*16777215).toString(16)}`,
+                              visible: true
+                            };
+                            setMeasurementGroups([...measurementGroups, newGroup]);
+                            setActiveGroupId(newGroup.id);
+                          }
+                          setDialogConfig(null);
+                        },
+                        onCancel: () => setDialogConfig(null)
+                      });
+                    }}
+                  >
+                    + Ny Grupp
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex p-2 bg-gray-50 border-b border-gray-200">
+                <button
+                  onClick={() => setActiveSidebarTab("ledger")}
+                  className={`flex-1 py-1.5 text-sm font-semibold rounded-md mx-1 transition-colors ${activeSidebarTab === "ledger" ? "bg-white text-gray-800 shadow-sm border border-gray-200" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                >
+                  Mängdförteckning
+                </button>
+                <button
+                  onClick={() => setActiveSidebarTab("properties")}
+                  className={`flex-1 py-1.5 text-sm font-semibold rounded-md mx-1 transition-colors ${activeSidebarTab === "properties" ? "bg-white text-gray-800 shadow-sm border border-gray-200" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                >
+                  Egenskaper
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="p-3 flex-1 overflow-y-auto bg-gray-50">
+            {activeSidebarTab === "ledger" ? (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="text-sm font-bold text-gray-800">
+                    Mätningar{" "}
+                    <span className="text-gray-500 text-xs font-medium">
+                      ({measurements.filter((m) => m.page === pageNum).length}{" "}
+                      objekt)
+                    </span>
+                  </div>
+                </div>
+
+                {measurements.filter((m) => m.page === pageNum).length === 0 ? (
+                  <div className="text-sm text-gray-500 text-center my-10 px-4 bg-white py-6 rounded-lg border border-dashed border-gray-300">
+                    Inga mätningar på denna sida (Sida {pageNum}). Välj ett
+                    verktyg i verktygsfältet för att börja.
+                  </div>
+                ) : (
+                  <ul className="space-y-4">
+                    {measurementGroups.map((group) => {
+                      const groupMeasurements = measurements.filter((m) => m.page === pageNum && (m.groupId === group.id || (!m.groupId && group.id === 'default')));
+                      if (groupMeasurements.length === 0) return null;
+
+                      // Summarize totals per tool in this group
+                      const summary = groupMeasurements.reduce((acc, m) => {
+                        const unit = m.tool === "area" ? "m²" : m.tool === "volume" ? "m³" : m.tool === "count" ? "st" : m.tool === "text" ? "" : "m";
+                        const key = m.tool;
+                        if (!acc[key]) acc[key] = { tool: m.tool, total: 0, unit, items: [] };
+                        acc[key].items.push(m);
+                        acc[key].total += (m.tool === "count" ? 1 : m.value || 0) * (m.multiplier || 1);
+                        return acc;
+                      }, {} as Record<string, { tool: string; total: number; unit: string; items: Measurement[] }>);
+
+                      return (
+                        <li key={group.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                          <div className="bg-gray-50 p-2 border-b border-gray-200 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-sm shadow-sm" style={{ backgroundColor: group.color }}></div>
+                              <span className="font-bold text-sm text-gray-800">{group.name}</span>
+                            </div>
+                            <span className="text-xs text-gray-500 font-medium">{groupMeasurements.length} objekt</span>
+                          </div>
+                          <div className="p-2 space-y-3">
+                            {Object.values(summary).map(sum => (
+                              <div key={sum.tool} className="space-y-1">
+                                <div className="flex justify-between items-center text-xs font-semibold text-gray-600 uppercase mb-1">
+                                  <span>{sum.tool === 'count' ? 'Antal' : sum.tool === 'area' ? 'Yta' : sum.tool === 'volume' ? 'Volym' : sum.tool === 'text' ? 'Noteringar' : 'Längd'}</span>
+                                  {sum.tool !== 'text' && <span className="text-gray-900 bg-gray-100 px-1.5 py-0.5 rounded">{sum.total.toFixed(2)} {sum.unit}</span>}
+                                </div>
+                                <ul className="space-y-1 pl-1 border-l-2 border-gray-100 ml-1">
+                                  {sum.items.map(m => (
+                                    <li
+                                      key={m.id}
+                                      onClick={() => {
+                                        setSelectedMeasurementId(m.id);
+                                        setActiveSidebarTab("properties");
+                                      }}
+                                      className={`flex justify-between items-center p-1.5 rounded cursor-pointer transition-colors ${selectedMeasurementId === m.id ? "bg-blue-50 ring-1 ring-blue-400" : "hover:bg-gray-50"}`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500 font-medium">#{m.id.substring(m.id.length - 4)}</span>
+                                        <span className="text-xs text-gray-700 truncate max-w-[80px]">{m.name || m.text || ''}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {m.multiplier && m.multiplier > 1 && <span className="text-[10px] text-gray-400 font-medium px-1 bg-gray-100 rounded">x{m.multiplier}</span>}
+                                        {m.tool !== 'text' && <span className="text-xs font-medium text-gray-700">{(m.value || (m.tool==='count'?1:0)).toFixed(2)} {sum.unit}</span>}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="text-sm font-bold text-gray-800">
+                    Egenskaper
+                  </div>
+                </div>
+                {selectedMeasurementId ? (
+                  measurements
+                    .filter((m) => m.id === selectedMeasurementId)
+                    .map((m) => (
+                      <div key={m.id} className="space-y-4">
+                        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm space-y-3">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase">
+                              Namn
+                            </label>
+                            <input
+                              type="text"
+                              value={m.name || ""}
+                              placeholder={
+                                m.tool === "distance" || m.tool === "line"
+                                  ? "Avstånd " + m.id.substring(m.id.length - 4)
+                                  : m.tool === "area"
+                                    ? "Yta " + m.id.substring(m.id.length - 4)
+                                    : m.tool === "volume"
+                                      ? "Volym " +
+                                        m.id.substring(m.id.length - 4)
+                                      : m.tool === "count"
+                                        ? "Antal " +
+                                          m.id.substring(m.id.length - 4)
+                                        : m.tool === "text"
+                                          ? "Notering " +
+                                            m.id.substring(m.id.length - 4)
+                                          : `Mätning (${m.tool})`
+                              }
+                              onChange={(e) =>
+                                setMeasurements(
+                                  measurements.map((x) =>
+                                    x.id === m.id
+                                      ? { ...x, name: e.target.value }
+                                      : x,
+                                  ),
+                                )
+                              }
+                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-gray-900 px-3 py-2 border"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase">
+                              Antal (Mängd)
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={m.multiplier || 1}
+                              onChange={(e) =>
+                                setMeasurements(
+                                  measurements.map((x) =>
+                                    x.id === m.id
+                                      ? {
+                                          ...x,
+                                          multiplier:
+                                            parseInt(e.target.value) || 1,
+                                        }
+                                      : x,
+                                  ),
+                                )
+                              }
+                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-gray-900 px-3 py-2 border"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase">
+                              Byggdel
+                            </label>
+                            <select
+                              value={
+                                m.byggdelType || "72.1_Allman_Ritningsmatning"
+                              }
+                              onChange={(e) =>
+                                setMeasurements(
+                                  measurements.map((x) =>
+                                    x.id === m.id
+                                      ? { ...x, byggdelType: e.target.value }
+                                      : x,
+                                  ),
+                                )
+                              }
+                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-gray-900 px-3 py-2 border"
+                            >
+                              <option value="72.1_Allman_Ritningsmatning">
+                                Allmän mätning
+                              </option>
+                              {INITIAL_TIDSFAKTORER.map((tf) => (
+                                <option key={tf.type} value={tf.type}>
+                                  {tf.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          {(m.tool === "distance" ||
+                            m.tool === "polyline" ||
+                            m.tool === "line" ||
+                            m.tool === "area") && (
+                            <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase">
+                                Höjd/Djup (m)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={m.height || ""}
+                                onChange={(e) =>
+                                  setMeasurements(
+                                    measurements.map((x) =>
+                                      x.id === m.id
+                                        ? {
+                                            ...x,
+                                            height:
+                                              e.target.value === ""
+                                                ? undefined
+                                                : parseFloat(e.target.value),
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                                placeholder="t.ex. 2.4"
+                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-gray-900 px-3 py-2 border"
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase">
+                              Typ av mätning
+                            </label>
+                            <div className="text-sm font-medium text-gray-900 mt-0.5">
+                              {m.tool.charAt(0).toUpperCase() + m.tool.slice(1)}
+                            </div>
+                          </div>
+                          {m.value !== undefined && m.tool !== "count" && (
+                            <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase">
+                                Geometri{" "}
+                                {m.tool === "volume" && m.depth
+                                  ? "(med djup)"
+                                  : ""}
+                              </label>
+                              <div className="text-sm font-medium text-gray-900 mt-0.5">
+                                {(m.value * (m.multiplier || 1)).toFixed(2)}{" "}
+                                {m.tool === "area"
+                                  ? "m²"
+                                  : m.tool === "volume"
+                                    ? "m³"
+                                    : "m"}
+                                {m.tool === "volume" && m.depth && (
+                                  <span className="text-gray-500 ml-2 text-xs">
+                                    (Djup: {m.depth}m)
+                                  </span>
+                                )}
+                                {m.multiplier && m.multiplier > 1 && (
+                                  <span className="text-gray-500 ml-2 text-xs">
+                                    ({m.value.toFixed(2)} × {m.multiplier})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {m.text && (
+                            <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase">
+                                Textvärde
+                              </label>
+                              <div className="text-sm font-medium text-gray-900 mt-0.5">
+                                {m.text}
+                              </div>
+                            </div>
+                          )}
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
+                              Färg & Opacitet
+                            </label>
+                            <div className="flex gap-2 mb-3">
+                              {[
+                                "#ff2a2a",
+                                "#2a5aff",
+                                "#1f2937",
+                                "#e68a00",
+                                "#10b981",
+                                "#9333ea",
+                                "#ec4899",
+                                "#facc15",
+                              ].map((color) => (
+                                <button
+                                  key={color}
+                                  className={`w-6 h-6 rounded-full border-2 ${m.color === color ? "border-gray-800" : "border-transparent"}`}
+                                  style={{ backgroundColor: color }}
+                                  onClick={() =>
+                                    setMeasurements(
+                                      measurements.map((x) =>
+                                        x.id === m.id ? { ...x, color } : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-500 font-medium w-8">
+                                {(m.opacity ?? 1.0) * 100}%
+                              </span>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={m.opacity ?? 1.0}
+                                onChange={(e) =>
+                                  setMeasurements(
+                                    measurements.map((x) =>
+                                      x.id === m.id
+                                        ? {
+                                            ...x,
+                                            opacity: parseFloat(e.target.value),
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                                className="flex-1 w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setMeasurements(
+                              measurements.filter(
+                                (x) => x.id !== selectedMeasurementId,
+                              ),
+                            );
+                            setSelectedMeasurementId(null);
+                            setActiveSidebarTab("ledger");
+                          }}
+                          className="w-full py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors border border-red-100 flex justify-center items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            delete
+                          </span>{" "}
+                          Ta bort mätning
+                        </button>
+                      </div>
+                    ))
+                ) : (
+                  <div className="space-y-6">
+                    <div className="text-sm text-gray-500 text-center px-4 mb-4">
+                      Välj en mätning i mängdförteckningen för att visa och
+                      redigera dess egenskaper.
+                    </div>
+                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm space-y-4">
+                      <h4 className="text-sm font-bold text-gray-800 border-b border-gray-100 pb-2">
+                        Ritinställningar
+                      </h4>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-gray-700">
+                          Fäst mot objekt (Snapping)
+                        </label>
+                        <button
+                          onClick={() =>
+                            setIsSnappingEnabled(!isSnappingEnabled)
+                          }
+                          className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${isSnappingEnabled ? "bg-blue-600" : "bg-gray-300"}`}
+                        >
+                          <div
+                            className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${isSnappingEnabled ? "translate-x-5" : "translate-x-0"}`}
+                          />
+                        </button>
+                      </div>
+                      {isSnappingEnabled && (
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-gray-500 uppercase">
+                              Fästavstånd (px)
+                            </label>
+                            <span className="text-xs font-medium text-gray-700">
+                              {snapDistance}px
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="5"
+                            max="50"
+                            step="1"
+                            value={snapDistance}
+                            onChange={(e) =>
+                              setSnapDistance(parseInt(e.target.value))
+                            }
+                            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {pdfDoc && (
+            <div className="p-5 flex flex-col gap-3 bg-white border-t border-gray-100 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
+              <button
+                onClick={exportSelected}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm flex items-center justify-center gap-2 shadow-md hover:bg-blue-700 transition-colors"
+              >
+                <span className="material-symbols-outlined text-[20px]">
+                  add_task
+                </span>{" "}
+                Exportera till Kalkyl ({measurements.length})
+              </button>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <button className="w-full py-2 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg font-medium text-xs hover:bg-gray-100 transition-colors flex justify-center items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px]">
+                    picture_as_pdf
+                  </span>{" "}
+                  PDF
+                </button>
+                <button className="w-full py-2 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg font-medium text-xs hover:bg-gray-100 transition-colors flex justify-center items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px]">
+                    table_chart
+                  </span>{" "}
+                  Excel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+

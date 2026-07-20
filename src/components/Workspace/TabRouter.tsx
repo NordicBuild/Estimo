@@ -15,6 +15,12 @@ import { PdfMeasurementTab } from '../PdfMeasurementTab';
 import { AnalysTab } from '../AnalysTab';
 import { MaterialTab } from '../MaterialTab';
 import { FfuTab } from '../Ffu/FfuTab';
+import { AktivitetsloggTab } from '../AktivitetsloggTab';
+import { KalkylprojektTab } from '../KalkylprojektTab';
+import { PortfolioTab } from '../PortfolioTab';
+
+import { AdminDashboard } from '../Ffu/AdminDashboard';
+import { InspectionTab } from '../Ffu/InspectionTab';
 
 const FallbackSpinner = () => (
   <div className="flex-1 flex items-center justify-center p-8">
@@ -104,7 +110,7 @@ export function TabRouter(props: any) {
       )}
       {activeTab === 'pdf' && (
         <Suspense fallback={<FallbackSpinner />}>
-          <PdfMeasurementTab addParts={rest.addMeasurementParts} />
+          <PdfMeasurementTab addParts={rest.addMeasurementParts} activeProjectId={rest.activeProjectId} />
         </Suspense>
       )}
       {activeTab === 'material' && (
@@ -148,7 +154,7 @@ export function TabRouter(props: any) {
       )}
       {activeTab === 'sammanstalln' && (
         <Suspense fallback={<FallbackSpinner />}>
-          <SammanstallnTab calcResult={rest.calcResult} materials={rest.materials} updateMaterial={rest.updateMaterial} projectInfo={rest.projectInfo} setProjectInfo={rest.setProjectInfo} companyInfo={rest.companyInfo} />
+          <SammanstallnTab calcResult={rest.calcResult} materials={rest.materials} updateMaterial={rest.updateMaterial} projectInfo={rest.projectInfo} setProjectInfo={rest.setProjectInfo} companyInfo={rest.companyInfo} projectId={rest.activeProjectId} />
         </Suspense>
       )}
       {activeTab === 'planering' && (
@@ -178,7 +184,13 @@ export function TabRouter(props: any) {
         </div>
       )}
       {activeTab === 'dokument_ffu' && (
-        <FfuTab projectId={rest.activeProjectId || ''} />
+        <FfuTab projectId={rest.activeProjectId || ''} availableByggdelar={rest.byggdelar || []} setActiveTab={rest.setActiveTab} />
+      )}
+      {activeTab === 'admin_ffu' && (
+        <AdminDashboard projectId={rest.activeProjectId || ''} />
+      )}
+      {activeTab === 'inspektioner' && (
+        <InspectionTab projectId={rest.activeProjectId || ''} />
       )}
       {activeTab === 'dokument_modell' && (
         <div className="p-8 flex items-center justify-center h-full">
@@ -248,6 +260,25 @@ export function TabRouter(props: any) {
           </div>
         </div>
       )}
+
+      {activeTab === 'aktivitetslogg' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <AktivitetsloggTab />
+        </Suspense>
+      )}
+      
+      {activeTab === 'kalkylprojekt' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <KalkylprojektTab />
+        </Suspense>
+      )}
+      
+      {activeTab === 'portfolio' && (
+        <Suspense fallback={<FallbackSpinner />}>
+          <PortfolioTab />
+        </Suspense>
+      )}
+
       {activeTab === 'mina_uppgifter' && (
         <Suspense fallback={<FallbackSpinner />}>
           <MinaUppgifterTab user={rest.user} profile={rest.profile} refreshProfile={rest.refreshProfile} />

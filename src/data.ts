@@ -1,11 +1,13 @@
 export interface ProjectFolder {
   id: string;
   name: string;
+  parentId?: string;
 }
 
 export interface ProjectVersion {
   id: string;
   name: string;
+  parentId?: string;
   timestamp: string;
   byggdelar: Byggdel[];
 }
@@ -30,6 +32,7 @@ export interface SavedProject {
 export type Milestone = {
   id: string;
   name: string;
+  parentId?: string;
   plannedDate?: string;
   actualDate?: string;
   paymentPct?: number;   // andel av kontraktssumman, i procent (25 = 25 %)
@@ -39,6 +42,7 @@ export type Milestone = {
 export type ProjectInfo = {
   nr: string;
   name: string;
+  parentId?: string;
   client: string;
   clientOrgNr: string;
   clientContact: string;
@@ -78,6 +82,7 @@ export const INITIAL_USER_SETTINGS: UserSettings = {
 
 export type CompanyInfo = {
   name: string;
+  parentId?: string;
   orgNr: string;
   contactPerson: string;
   email: string;
@@ -118,6 +123,7 @@ export const INITIAL_COMPANY_INFO: CompanyInfo = {
 export type Material = {
   cat: string;
   name: string;
+  parentId?: string;
   unit: string;
   price: number;
   spill: number;
@@ -127,13 +133,15 @@ export type Material = {
   priceHistory?: { date: string; price: number }[];
   co2PerUnit?: number;
   co2Source?: string;
-  lcaIndicators?: { name: string; unit: string; amount: number }[];
+  lcaIndicators?: { name: string;
+  parentId?: string; unit: string; amount: number }[];
 };
 
 export type ArbetsMoment = {
   id: number;
   cat: string;
   name: string;
+  parentId?: string;
   tid: number;
   unit: string;
   sv: number;
@@ -171,6 +179,7 @@ export type Dimensions = {
 export type Byggdel = {
   id: number;
   name: string;
+  parentId?: string;
   type: string;
   group?: string; // e.g. "Hus A", "Källare"
   revision?: string; // e.g. "Kopia 1", "Alternativ 2"

@@ -82,7 +82,7 @@ export function usePdfMeasurements(documentId: string | null) {
       }
 
     } catch (err: any) {
-      console.error('Error fetching PDF measurements:', err);
+      console.warn('PDF measurements fetch (expected if missing tables):', err);
       setError(err.message);
     } finally {
       setLoading(false);

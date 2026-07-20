@@ -67,7 +67,7 @@ export function ResponsiveTable({ data, columns, onRowClick }: ResponsiveTablePr
   if (isTablet) {
     return (
       <div className="overflow-x-auto rounded-lg border border-outline-variant bg-surface">
-        <table className="w-full text-sm text-left">
+        <table className="w-full text-sm text-left whitespace-nowrap">
           <thead>
             <tr className="border-b border-outline-variant bg-surface-container-low">
               {columns
@@ -114,7 +114,7 @@ export function ResponsiveTable({ data, columns, onRowClick }: ResponsiveTablePr
   // Desktop: Full table
   return (
     <div className="overflow-x-auto rounded-lg border border-outline-variant bg-surface">
-      <table className="w-full text-sm text-left">
+      <table className="w-full text-sm text-left whitespace-nowrap">
         <thead>
           <tr className="border-b border-outline-variant bg-surface-container-low">
             {columns.map(col => (

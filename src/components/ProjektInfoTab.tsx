@@ -755,8 +755,8 @@ export function ProjektInfoTab({ projectInfo, setProjectInfo, companyInfo, setCo
           </div>
 
           {currentProject?.versions && currentProject.versions.length > 0 ? (
-            <div className="border border-[var(--border)] rounded-lg overflow-hidden">
-              <table className="w-full text-left text-sm">
+            <div className="border border-[var(--border)] rounded-lg overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap lg:whitespace-normal">
                 <thead className="bg-gray-50 border-b border-[var(--border)]">
                   <tr>
                     <th className="px-4 py-3 font-semibold text-gray-600">Versionsnamn</th>

@@ -81,7 +81,7 @@ export function ReceptbibliotekTab({ companyId }: Props) {
         </button>
       </div>
 
-      <div className="bg-white rounded shadow-sm border overflow-hidden">
+      <div className="bg-white rounded shadow-sm border overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-gray-100 border-b border-gray-200">
             <tr>
@@ -238,8 +238,8 @@ function ReceptModal({ isOpen, onClose, initialData, onSave }: ReceptModalProps)
               <i className="fa-solid fa-plus mr-1"></i> Lägg till
             </button>
           </div>
-          <div className="border rounded overflow-hidden">
-            <table className="w-full text-left text-sm">
+          <div className="border rounded overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap lg:whitespace-normal">
               <thead className="bg-gray-100">
                 <tr>
                   <th className="p-2">Id (T.ex. artikelnummer)</th>
@@ -292,8 +292,8 @@ function ReceptModal({ isOpen, onClose, initialData, onSave }: ReceptModalProps)
               <i className="fa-solid fa-plus mr-1"></i> Lägg till
             </button>
           </div>
-          <div className="border rounded overflow-hidden">
-            <table className="w-full text-left text-sm">
+          <div className="border rounded overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap lg:whitespace-normal">
               <thead className="bg-gray-100">
                 <tr>
                   <th className="p-2">Id (T.ex. resurskod)</th>
